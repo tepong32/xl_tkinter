@@ -1,0 +1,3 @@
+# nothing really required aside from configuring tkinter to match your python version
+# "sudo apt-install python3.11-tk"
+
