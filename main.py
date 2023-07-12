@@ -94,12 +94,26 @@ treeScroll.config(command=treeView.yview) # this line attaches the treeScroll wi
 
 
 ### attaching the excel file to the UI starts here:
-# import openpyxl
+import openpyxl
 
-# def load_data():
+def load_data():
+    # used prefix (r) to avoid unicodeescape error
+    # see https://stackoverflow.com/questions/1347791/unicode-error-unicodeescape-codec-cant-decode-bytes-cannot-open-text-file
+    path = r"C:\Users\Administrator\Desktop\Github\xl_tkinter\people.xlsx"
+    workbook = openpyxl.load_workbook(path)
+    sheet = workbook.active
+    list_values = list(sheet.values)
+    # print(list_values) # to see the data inside the active sheet of the excel file
+    for col_name in list_values[0]:
+        # this loop gets the first "values" on the excel sheet (ie: headings of the columns)
+        # those will then be set as the headings on the tkinter UI
+        treeView.heading(col_name, text=col_name)
 
+    for value_tuple in list_values[1:]:
+        # starting from [1] onwards, are the data we need loaded into the treeView
+        treeView.insert('', tk.END, values=value_tuple)
 
-# load_data()
+load_data()
 
 
 root.mainloop()
