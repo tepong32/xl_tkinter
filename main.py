@@ -46,11 +46,47 @@ status_combobox.grid(row=2, column=0, padx=5, pady=(0,5), sticky="ew")
 ### col1, row4 ### Checkbox
 # set the value for the variable "cb" to be used on the checkbox
 cb = tk.BooleanVar()
-checkbox = ttk.Checkbutton(widgets_frame, text="Employed", variable=cb)
-checkbox.grid(row=3, column=0, padx=5, pady=(0,5), sticky="nsew")
+checkbutton = ttk.Checkbutton(widgets_frame, text="Employed", variable=cb)
+checkbutton.grid(row=3, column=0, padx=5, pady=(0,5), sticky="nsew")
 
-### col1, row5 ###
-button = ttk.Button(widgets_frame, text="Insert")
+### col1, row5 ### Insert Row button
+def insert_row():
+    '''
+     This function is the one where user input will be added to the excel file
+     and displayed on the UI.
+     It is composed of three parts:
+    '''
+    # retrieving data and assigning variables to them
+    name = name_entry.get()
+    age = int(age_spinbox.get())
+    subscription_status = status_combobox.get()
+    employment_status = "Employed" if cb.get() else "Unemployed"
+    # testing line for the above variable assignments
+    print(name, age, subscription_status, employment_status)
+
+    # inserting the row to the excel file
+    path = r"C:\Users\Administrator\Desktop\Github\xl_tkinter\people.xlsx"
+    workbook = openpyxl.load_workbook(path)
+    sheet = workbook.active
+    row_values = [name, age, subscription_status, employment_status]
+    sheet.append(row_values)
+    workbook.save(path)
+
+    # displaying the inserted row on the UI (treeView)
+    treeView.insert('', tk.END, values=row_values)
+
+    # clear the values after inserting the new row
+    # and then resetting the values to default
+    name_entry.delete(0, "end")
+    name_entry.insert(0, "Name")
+    age_spinbox.delete(0, "end")
+    age_spinbox.insert(0, "Age")
+    status_combobox.delete(0, "end")
+    status_combobox.set(combo_list[0])
+    checkbutton.state(["!selected"])
+
+
+button = ttk.Button(widgets_frame, text="Insert", command=insert_row)
 button.grid(row=4, column=0, sticky="nsew")
 
 ### separator ###
