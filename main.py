@@ -129,6 +129,13 @@ treeView.pack()
 treeScroll.config(command=treeView.yview) # this line attaches the treeScroll widget to the treeView, scrolling vertically
 
 
+# Event Listener function highlighting selected items on the treeView list
+def selected():
+    print(listbox.get(listbox.curselection()[0]))
+    
+treeView.bind("<<ListboxSelect>>", lambda x: selected())   
+
+
 ### attaching the excel file to the UI starts here:
 import openpyxl
 
