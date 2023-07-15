@@ -108,7 +108,7 @@ mode_switch.grid(row=6, column=0, padx=5, pady=10, sticky="nsew")
 
 
 
-################## Excel LabelFrame ####################################
+################## TreeView / Excel LabelFrame ####################################
 ### This is where the preview of the excel file's data will be displayed
 
 ### Outer Frame
@@ -135,7 +135,8 @@ import openpyxl
 def load_data():
     # used prefix (r) to avoid unicodeescape error
     # see https://stackoverflow.com/questions/1347791/unicode-error-unicodeescape-codec-cant-decode-bytes-cannot-open-text-file
-    path = r"C:\Users\Administrator\Desktop\Github\xl_tkinter\people.xlsx"
+    # path = r"C:\Users\Administrator\Desktop\Github\xl_tkinter\people.xlsx" # windows
+    path = r"./people.xlsx" # linux
     workbook = openpyxl.load_workbook(path)
     sheet = workbook.active
     list_values = list(sheet.values)
@@ -146,10 +147,11 @@ def load_data():
         treeView.heading(col_name, text=col_name)
 
     for value_tuple in list_values[1:]:
-        # starting from [1] onwards, are the data we need loaded into the treeView
+        # starting from [1] onwards, are the data (lists) we need loaded into the treeView
         treeView.insert('', tk.END, values=value_tuple)
 
 load_data()
+################## /TreeView / Excel LabelFrame ####################################
 
 
 root.mainloop()
