@@ -2,144 +2,211 @@ import tkinter as tk
 from tkinter import ttk, messagebox
 import ttkbootstrap as tb
 from ttkbootstrap.constants import *
-import openpyxl
+from openpyxl import load_workbook, Workbook
 import os
 
-class DataEntryApp:
-    def __init__(self, root):
-        self.root = root
-        self.root.title("Excel Data Entry App")
-        self.root.minsize(1280, 960)  # 🔧 Set minimum desktop-like size
-        self.style = tb.Style("darkly")
-        
-        self.excel_path = "./people.xlsx"
-        self.ensure_excel_file()
+FILE_NAME = "data.xlsx"
 
-        # Configure main frame for responsive layout
-        self.frame = ttk.Frame(root, padding=10)
-        self.frame.pack(fill="both", expand=True)
-        self.frame.columnconfigure(1, weight=1)
-        self.frame.rowconfigure(0, weight=1)
 
-        # === Left panel: Data entry ===
-        self.widgets_frame = ttk.LabelFrame(self.frame, text="Insert Row", padding=10)
-        self.widgets_frame.grid(row=0, column=0, padx=10, pady=10, sticky="n")
-
-        self.name_entry = ttk.Entry(self.widgets_frame)
-        self.name_entry.insert(0, "Name")
-        self.name_entry.bind("<FocusIn>", lambda e: self.clear_placeholder(self.name_entry, "Name"))
-        self.name_entry.grid(row=0, column=0, padx=5, pady=5, sticky="ew")
-
-        self.age_spinbox = ttk.Spinbox(self.widgets_frame, from_=18, to=100)
-        self.age_spinbox.insert(0, "Age")
-        self.age_spinbox.grid(row=1, column=0, padx=5, pady=5, sticky="ew")
-
-        combo_list = ["Subscribed", "Not Subscribed", "Other"]
-        self.status_combobox = ttk.Combobox(self.widgets_frame, values=combo_list)
-        self.status_combobox.current(0)
-        self.status_combobox.grid(row=2, column=0, padx=5, pady=5, sticky="ew")
-
-        self.cb_var = tk.BooleanVar()
-        self.checkbutton = ttk.Checkbutton(self.widgets_frame, text="Employed", variable=self.cb_var)
-        self.checkbutton.grid(row=3, column=0, padx=5, pady=5, sticky="w")
-
-        insert_btn = ttk.Button(self.widgets_frame, text="Insert", bootstyle=SUCCESS, command=self.insert_row)
-        insert_btn.grid(row=4, column=0, padx=5, pady=10, sticky="ew")
-
-        ttk.Separator(self.widgets_frame).grid(row=5, column=0, padx=5, pady=10, sticky="ew")
-
-        self.mode_var = tk.BooleanVar()
-        mode_switch = ttk.Checkbutton(
-            self.widgets_frame, text="Toggle Theme", variable=self.mode_var,
-            bootstyle="round-toggle", command=self.toggle_mode)
-        mode_switch.grid(row=6, column=0, padx=5, pady=10, sticky="ew")
-
-        # === Right panel: TreeView ===
-        self.tree_frame = ttk.Frame(self.frame)
-        self.tree_frame.grid(row=0, column=1, padx=10, pady=10, sticky="nsew")
-
-        self.tree_scroll = ttk.Scrollbar(self.tree_frame)
-        self.tree_scroll.pack(side="right", fill="y")
-
-        self.cols = ("Name", "Age", "Subscription", "Employment")
-        self.tree = ttk.Treeview(
-            self.tree_frame, show="headings", yscrollcommand=self.tree_scroll.set,
-            columns=self.cols, height=15)
-        self.tree_scroll.config(command=self.tree.yview)
-
-        for col in self.cols:
-            self.tree.heading(col, text=col)
-            self.tree.column(col, width=120, anchor="center")
-
-        self.tree.pack(fill="both", expand=True)
-        self.tree.bind("<<TreeviewSelect>>", self.on_select)
-
-        self.load_data()
-
-    def clear_placeholder(self, entry, placeholder):
-        if entry.get() == placeholder:
-            entry.delete(0, "end")
-
-    def ensure_excel_file(self):
-        if not os.path.exists(self.excel_path):
-            wb = openpyxl.Workbook()
-            ws = wb.active
-            ws.append(["Name", "Age", "Subscription", "Employment"])
-            wb.save(self.excel_path)
-
-    def load_data(self):
-        self.tree.delete(*self.tree.get_children())
-        wb = openpyxl.load_workbook(self.excel_path)
+def ensure_excel_file():
+    """Ensure Excel file exists with headers."""
+    if not os.path.exists(FILE_NAME):
+        wb = Workbook()
         ws = wb.active
-        rows = list(ws.iter_rows(min_row=2, values_only=True))
-        # 🔁 Reverse so newest (last rows) appear first
-        for row in reversed(rows):
-            self.tree.insert("", tk.END, values=row)
-        wb.close()
+        ws.title = "Data"
+        ws.append(["Name", "Age", "Email"])
+        wb.save(FILE_NAME)
 
-    def insert_row(self):
-        name = self.name_entry.get().strip()
-        age_value = self.age_spinbox.get()
-        sub_status = self.status_combobox.get()
-        emp_status = "Employed" if self.cb_var.get() else "Unemployed"
 
-        if not name or name == "Name":
-            messagebox.showerror("Error", "Please enter a valid name.")
-            return
-        try:
-            age = int(age_value)
-        except ValueError:
-            messagebox.showerror("Error", "Age must be a number.")
-            return
+def load_excel_data(tree):
+    """Load Excel data into Treeview (latest entries first)."""
+    tree.delete(*tree.get_children())
+    wb = load_workbook(FILE_NAME)
+    sheet = wb.active
+    rows = list(sheet.iter_rows(values_only=True))
+    for row in reversed(rows):
+        if any(row):  # skip empty rows
+            tree.insert("", tk.END, values=row)
+    wb.close()
 
-        wb = openpyxl.load_workbook(self.excel_path)
+
+def highlight_entry(entry, valid):
+    """Change entry field style based on validation."""
+    if valid:
+        entry.configure(bootstyle="default")
+    else:
+        entry.configure(bootstyle="danger")
+
+
+def validate_fields(name_entry, age_entry, email_entry, name, age, email):
+    """Visual + logical validation of all fields."""
+    all_valid = True
+
+    # Name validation
+    if not name.strip():
+        highlight_entry(name_entry, False)
+        all_valid = False
+    else:
+        highlight_entry(name_entry, True)
+
+    # Age validation
+    if not age.isdigit():
+        highlight_entry(age_entry, False)
+        all_valid = False
+    else:
+        highlight_entry(age_entry, True)
+
+    # Email validation
+    if "@" not in email or "." not in email:
+        highlight_entry(email_entry, False)
+        all_valid = False
+    else:
+        highlight_entry(email_entry, True)
+
+    return all_valid
+
+
+def insert_data(name_var, age_var, email_var, tree, entries):
+    """Validate inputs, insert data into Excel, and refresh the tree."""
+    name = name_var.get().strip()
+    age = age_var.get().strip()
+    email = email_var.get().strip()
+
+    name_entry, age_entry, email_entry = entries
+
+    if not name or not age or not email:
+        messagebox.showerror("Missing Information", "All fields are required.")
+        validate_fields(name_entry, age_entry, email_entry, name, age, email)
+        return
+
+    if not validate_fields(name_entry, age_entry, email_entry, name, age, email):
+        messagebox.showerror("Invalid Data", "Please correct highlighted fields.")
+        return
+
+    try:
+        wb = load_workbook(FILE_NAME)
         ws = wb.active
-        ws.append([name, age, sub_status, emp_status])
-        wb.save(self.excel_path)
+        ws.append([name, int(age), email])
+        wb.save(FILE_NAME)
         wb.close()
+        load_excel_data(tree)
 
-        # 🆕 Insert new row at the top instead of the bottom
-        self.tree.insert("", 0, values=(name, age, sub_status, emp_status))
+        # Clear input fields
+        name_var.set("")
+        age_var.set("")
+        email_var.set("")
 
-        self.name_entry.delete(0, "end")
-        self.name_entry.insert(0, "Name")
-        self.age_spinbox.delete(0, "end")
-        self.age_spinbox.insert(0, "Age")
-        self.status_combobox.current(0)
-        self.cb_var.set(False)
+        messagebox.showinfo("Success", "Record added successfully!")
+        highlight_entry(name_entry, True)
+        highlight_entry(age_entry, True)
+        highlight_entry(email_entry, True)
 
-    def on_select(self, event):
-        selected_item = self.tree.selection()
-        if selected_item:
-            values = self.tree.item(selected_item, "values")
-            print("Selected:", values)
+    except Exception as e:
+        messagebox.showerror("Error", str(e))
 
-    def toggle_mode(self):
-        theme = "flatly" if self.mode_var.get() else "darkly"
-        self.style.theme_use(theme)
+
+def center_window(win, width, height):
+    """Center the window on the screen."""
+    screen_width = win.winfo_screenwidth()
+    screen_height = win.winfo_screenheight()
+    x = (screen_width // 2) - (width // 2)
+    y = (screen_height // 2) - (height // 2)
+    win.geometry(f"{width}x{height}+{x}+{y}")
+
+
+def main():
+    ensure_excel_file()
+
+    root = tb.Window(themename="flatly")
+    root.title("Data Entry App")
+    center_window(root, 1280, 960)
+    root.minsize(1280, 960)
+
+    # === HEADER WITH THEME TOGGLER ===
+    header_frame = ttk.Frame(root, padding=(10, 10))
+    header_frame.pack(fill=X)
+
+    title_label = ttk.Label(header_frame, text="Data Entry App", font=("Segoe UI", 16, "bold"))
+    title_label.pack(side=LEFT)
+
+    ttk.Label(header_frame, text="Theme:").pack(side=RIGHT, padx=(0, 5))
+    theme_var = tk.StringVar(value=root.style.theme.name)
+    theme_combo = ttk.Combobox(
+        header_frame,
+        textvariable=theme_var,
+        values=sorted(root.style.theme_names()),
+        state="readonly",
+        width=15,
+    )
+    theme_combo.pack(side=RIGHT)
+
+    def change_theme(event=None):
+        selected = theme_var.get()
+        root.style.theme_use(selected)
+
+    theme_combo.bind("<<ComboboxSelected>>", change_theme)
+
+    # === MAIN CONTENT FRAME ===
+    frame = ttk.Frame(root, padding=10)
+    frame.pack(fill=BOTH, expand=True)
+
+    # Input Fields
+    form_frame = ttk.LabelFrame(frame, text="Add New Record", padding=10)
+    form_frame.pack(fill=X, pady=10)
+
+    ttk.Label(form_frame, text="Name:").grid(row=0, column=0, padx=5, pady=5, sticky=E)
+    ttk.Label(form_frame, text="Age:").grid(row=1, column=0, padx=5, pady=5, sticky=E)
+    ttk.Label(form_frame, text="Email:").grid(row=2, column=0, padx=5, pady=5, sticky=E)
+
+    name_var = tk.StringVar()
+    age_var = tk.StringVar()
+    email_var = tk.StringVar()
+
+    name_entry = tb.Entry(form_frame, textvariable=name_var, width=30)
+    age_entry = tb.Entry(form_frame, textvariable=age_var, width=30)
+    email_entry = tb.Entry(form_frame, textvariable=email_var, width=30)
+
+    name_entry.grid(row=0, column=1, padx=5, pady=5)
+    age_entry.grid(row=1, column=1, padx=5, pady=5)
+    email_entry.grid(row=2, column=1, padx=5, pady=5)
+
+    # Clear highlight when refocusing a field
+    def clear_highlight(event):
+        highlight_entry(event.widget, True)
+
+    for entry in (name_entry, age_entry, email_entry):
+        entry.bind("<KeyRelease>", clear_highlight)
+        entry.bind("<FocusIn>", clear_highlight)
+
+    add_button = tb.Button(
+        form_frame,
+        text="Add Record",
+        bootstyle=SUCCESS,
+        command=lambda: insert_data(
+            name_var, age_var, email_var, tree, (name_entry, age_entry, email_entry)
+        ),
+    )
+    add_button.grid(row=3, column=0, columnspan=2, pady=10)
+
+    # Treeview Frame
+    tree_frame = ttk.LabelFrame(frame, text="Records", padding=10)
+    tree_frame.pack(fill=BOTH, expand=True, pady=10)
+
+    columns = ("Name", "Age", "Email")
+    tree = ttk.Treeview(tree_frame, columns=columns, show="headings", height=20)
+    for col in columns:
+        tree.heading(col, text=col)
+        tree.column(col, width=200, anchor=CENTER)
+
+    scrollbar = ttk.Scrollbar(tree_frame, orient="vertical", command=tree.yview)
+    tree.configure(yscroll=scrollbar.set)
+    tree.pack(side=LEFT, fill=BOTH, expand=True)
+    scrollbar.pack(side=RIGHT, fill=Y)
+
+    load_excel_data(tree)
+
+    root.mainloop()
 
 
 if __name__ == "__main__":
-    root = tb.Window(themename="darkly")
-    app = DataEntryApp(root)
-    root.mainloop()
+    main()
