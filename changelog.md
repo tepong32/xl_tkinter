@@ -4,6 +4,48 @@
 All notable changes to this project will be documented here.  
 This file follows the [Keep a Changelog](https://github.com/tepong32/xl_tkinter/en/1.1.0/) format.
 
+
+## [v1.2.0] - 2025-10-14
+
+### 🚀 Added
+- **Dynamic field generation** based on the active sheet’s headers.  
+  The app now reads the selected Excel file, detects column headers, and automatically builds matching input fields for user entry.  
+- **Treeview auto-refresh** to reflect the sheet’s live content after each addition.  
+- **Entry highlight on add:** Newly added rows are auto-highlighted in the table to confirm successful entry.
+- **Trim & normalization logic:**  
+  - Input fields now automatically strip leading, trailing, and extra in-between spaces before writing to Excel.  
+  - All validations use the cleaned version for accuracy.  
+- **Dynamic validation coloring:**  
+  - Invalid fields are highlighted in red (`#ffe6e6`).  
+  - Optional blanks (like the last “Notes/Remarks” column) are softly yellowed (`#fff7cc`).  
+  - Valid fields reset to white.  
+- **Real-time validation feedback:**  
+  Invalid or missing values trigger warnings immediately before writing to Excel.
+
+### 💡 Improved
+- **Adaptive layout:**  
+  UI reorganized for better usability — entry fields on top and data table below, mimicking a “press Enter to commit” workflow.  
+- **Automatic sheet-based configuration:**  
+  Switching to a different sheet automatically updates input fields and validation rules without restarting the app.
+- **Code structure refinement:**  
+  Added helper functions for trimming and validation normalization for better readability and maintenance.
+
+### 🧰 Technical
+- Retained all previous logic, including:
+  - Theme toggler (light/dark).
+  - Excel I/O via `openpyxl`.
+  - Entry validation and color feedback mechanisms.
+- Added internal `clean_spaces()` helper for consistent string cleanup across inputs.
+
+### 🪶 Notes
+- The final column (typically “Notes” or “Remarks”) is optional by design.  
+- This version sets the foundation for advanced Excel-like workflows, including autosave prompts, editable rows, and import/export flexibility in future releases.
+
+---
+
+**✅ Recommended next version milestone:**  
+Start implementing the *file prompt on startup* and *confirm-on-exit autosave* features for smoother session management.
+
 ## [v2.0.0] - 2025-10-14  
 ### ✨ Added  
 - **Dynamic Excel-Driven Data Entry:**  
