@@ -1,3 +1,5 @@
+# Changelog
+
 # 🧾 Project Changelog — Excel-Style Tkinter App
 
 All notable changes to this project will be documented here.  
@@ -103,6 +105,16 @@ This file follows the [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) f
 - [ ] Modularize logic into UI, Validation, and ExcelHandler classes.  
 - [ ] Add export/import sheets, auto-save toggle, and footer.  
 - [ ] Improve responsiveness for smaller windows.  
+
 ## v4.0.0 - 2025-10-16
 - testing-out python version manager.
+## v4.0.1 - 2025-10-16
+- testing-out python version manager.
+## v4.0.2 - 2025-10-16
+- trying patch :)
+## v4.1.0 - 2025-10-16
+- Added edit rows and auto-save features.
+- Text validation still applies on edits,
+- Highlights on new row additions need to be re-implemented,
+- UI re-work for indicators and buttons needed.
 
