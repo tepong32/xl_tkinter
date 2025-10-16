@@ -1,85 +1,113 @@
-#!/usr/bin/env python3
-"""
-version_manager.py
-Automates version bumping, changelog updates, git tagging, and commits.
-Usage:
-    python version_manager.py "Your changelog message" [major|minor|patch]
-"""
-
 import subprocess
-import sys
 from datetime import datetime
 from pathlib import Path
+from colorama import Fore, Style, init
 
-# --- CONFIG ---
+init(autoreset=True)
+
 VERSION_FILE = Path("VERSION")
 CHANGELOG_FILE = Path("CHANGELOG.md")
-DEFAULT_BUMP = "patch"  # default if not specified
-# ----------------
 
-def run(cmd):
-    """Run shell commands safely."""
-    result = subprocess.run(cmd, shell=True, capture_output=True, text=True)
-    if result.returncode != 0:
-        print("❌ Error:", result.stderr.strip())
-        sys.exit(1)
-    return result.stdout.strip()
+
+# -------------------------------
+# Utilities
+# -------------------------------
 
 def get_current_version():
+    """Read current version or create default."""
     if not VERSION_FILE.exists():
-        VERSION_FILE.write_text("0.0.0")
-    return VERSION_FILE.read_text().strip()
+        VERSION_FILE.write_text("0.0.0", encoding="utf-8")
+        print(Fore.YELLOW + "🪄 VERSION file not found — created default 0.0.0")
+
+    try:
+        version = VERSION_FILE.read_text(encoding="utf-8").strip()
+        parts = version.split(".")
+        if len(parts) != 3 or not all(p.isdigit() for p in parts):
+            raise ValueError
+        return version
+    except Exception:
+        print(Fore.RED + "⚠️  Invalid VERSION format — resetting to 0.0.0")
+        VERSION_FILE.write_text("0.0.0", encoding="utf-8")
+        return "0.0.0"
+
 
 def bump_version(current_version, bump_type):
+    """Increment version based on bump type."""
     major, minor, patch = map(int, current_version.split("."))
+
     if bump_type == "major":
-        major += 1; minor = 0; patch = 0
+        major += 1
+        minor = 0
+        patch = 0
     elif bump_type == "minor":
-        minor += 1; patch = 0
-    else:  # patch
+        minor += 1
+        patch = 0
+    else:
         patch += 1
-    return f"{major}.{minor}.{patch}"
+
+    new_version = f"{major}.{minor}.{patch}"
+    print(f"{Fore.CYAN}🔧 Bumping version {current_version} → {new_version}")
+    return new_version
+
 
 def update_files(new_version, message):
-    """Update version and changelog."""
-    VERSION_FILE.write_text(new_version, encoding="utf-8")
+    """Safely update version and changelog with UTF-8 encoding."""
+    VERSION_FILE.write_text(new_version.strip(), encoding="utf-8")
     date_str = datetime.now().strftime("%Y-%m-%d")
-
     changelog_entry = f"## v{new_version} - {date_str}\n- {message}\n\n"
+
+    # Read or create changelog
     if CHANGELOG_FILE.exists():
         try:
-            content = CHANGELOG_FILE.read_text(encoding="utf-8")
+            content = CHANGELOG_FILE.read_text(encoding="utf-8").strip()
         except UnicodeDecodeError:
-            content = CHANGELOG_FILE.read_text(encoding="utf-8", errors="ignore")
+            print(Fore.YELLOW + "⚠️  Changelog encoding issue — resetting to fresh format.")
+            content = "# Changelog\n\n"
+        except Exception as e:
+            print(Fore.YELLOW + f"⚠️  Could not read changelog: {e}")
+            content = "# Changelog\n\n"
     else:
         content = "# Changelog\n\n"
+        print(Fore.YELLOW + "🪄 CHANGELOG.md not found — created fresh one")
 
-    CHANGELOG_FILE.write_text(content + changelog_entry, encoding="utf-8")
-    
+    if not content.startswith("# Changelog"):
+        content = "# Changelog\n\n" + content
+
+    CHANGELOG_FILE.write_text(content + "\n" + changelog_entry, encoding="utf-8")
+
+
 def git_commit_and_tag(new_version, message):
-    """Commit changes and push with tag."""
-    run("git add VERSION CHANGELOG.md")
-    run(f'git commit -m "chore(release): v{new_version} - {message}"')
-    run(f'git tag -a v{new_version} -m "Release v{new_version}"')
-    run("git push")
-    run("git push --tags")
+    """Commit and tag new version in git."""
+    try:
+        subprocess.run(["git", "add", "VERSION", "CHANGELOG.md"], check=True)
+        subprocess.run(["git", "commit", "-m", f"{message} (v{new_version})"], check=True)
+        subprocess.run(["git", "tag", f"v{new_version}"], check=True)
+        print(Fore.GREEN + f"✅ Git commit + tag created for v{new_version}")
+    except subprocess.CalledProcessError:
+        print(Fore.RED + "⚠️  Git commit or tag failed. Check if repo is clean.")
+
+
+# -------------------------------
+# Main CLI logic
+# -------------------------------
 
 def main():
+    import sys
+
     if len(sys.argv) < 2:
-        print("Usage: python version_manager.py \"Message\" [major|minor|patch]")
-        sys.exit(1)
+        print(Fore.YELLOW + "Usage: python version_manager.py 'commit message' [major|minor|patch]")
+        return
 
     message = sys.argv[1]
-    bump_type = sys.argv[2] if len(sys.argv) > 2 else DEFAULT_BUMP
+    bump_type = sys.argv[2] if len(sys.argv) > 2 else "patch"
 
     current_version = get_current_version()
     new_version = bump_version(current_version, bump_type)
-
-    print(f"🔧 Bumping version {current_version} → {new_version}")
     update_files(new_version, message)
     git_commit_and_tag(new_version, message)
 
-    print(f"✅ Done! Released version v{new_version}")
+    print(Style.BRIGHT + Fore.GREEN + f"\n🎉 Done! Released version v{new_version}\n")
+
 
 if __name__ == "__main__":
     main()
