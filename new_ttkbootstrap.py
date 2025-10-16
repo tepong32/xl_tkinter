@@ -115,8 +115,8 @@ class DynamicExcelApp:
         save_btn = ttk.Button(toolbar, text="Save", command=self.save_file)
         save_btn.pack(side=tk.LEFT, padx=(0, 6))
 
-        add_row_btn = ttk.Button(toolbar, text="Add Row", command=self.add_row_from_inputs)
-        add_row_btn.pack(side=tk.LEFT, padx=(0, 6))
+        self.add_button = ttk.Button(toolbar, text="Add Row", command=self.add_row_from_inputs)
+        self.add_button.pack(side=tk.LEFT, padx=(0, 6))
 
         ttk.Label(toolbar, text="Sheet:").pack(side=tk.LEFT, padx=(12, 4))
         self.sheet_combo = ttk.Combobox(toolbar, state="readonly", width=30)
@@ -354,64 +354,58 @@ class DynamicExcelApp:
         Returns (is_valid: bool, messages: list, normalized_values: list)
         normalized_values is suitable for writing into Excel (numbers, ISO date strings, or text).
         """
-        is_valid = True
-        messages = []
+        values = [entry.get().strip() for entry in self.input_entries]
         normalized = []
+        messages = []
+        is_valid = True
 
-        for i, ent in enumerate(self.input_entries):
-            raw = ent.get().strip()
-            rule = self.validation_rules[i] if i < len(self.validation_rules) else {"type": "text", "required": True}
+        for i, (val, rule) in enumerate(zip(values, self.validation_rules)):
+            col_name = rule.get("name", f"Column {i+1}")
+            val_type = rule.get("type", "text")
+            required = rule.get("required", False)
 
-            # Empty handling
-            if raw == "":
-                if rule.get("required", True):
-                    is_valid = False
-                    messages.append(f"'{self.headers[i]}' is required.")
-                    ent.config(bg="#ffe6e6")  # light red
-                    normalized.append(None)
-                else:
-                    ent.config(bg="#e6ffe6")  # light green for valid (optional left blank)
-                    normalized.append("")  # write blank
+            # Required check
+            if required and not val:
+                is_valid = False
+                messages.append(f"{col_name}: This field is required.")
+                normalized.append(None)
                 continue
 
-            # Type-specific validations
-            typ = rule.get("type", "text")
-            if typ == "numeric":
-                if not is_numeric(raw):
-                    is_valid = False
-                    messages.append(f"'{self.headers[i]}' expects a numeric value.")
-                    ent.config(bg="#ffe6e6")
-                    normalized.append(None)
+            # --- Text normalization ---
+            if val_type == "text":
+                if val:
+                    # Collapse multiple spaces, trim, and normalize capitalization if desired
+                    cleaned = re.sub(r"\s+", " ", val.strip())
+                    normalized.append(cleaned)
                 else:
-                    ent.config(bg="#e6ffe6")
+                    normalized.append(None)
+
+            # --- Numeric validation ---
+            elif val_type == "numeric":
+                if val:
                     try:
-                        normalized.append(normalize_numeric(raw))
+                        normalized.append(float(val))
+                    except ValueError:
+                        is_valid = False
+                        messages.append(f"{col_name}: Invalid numeric value.")
+                        normalized.append(None)
+                else:
+                    normalized.append(None)
+
+            # --- Date validation ---
+            elif val_type == "date":
+                if val:
+                    try:
+                        normalized.append(datetime.fromisoformat(val).date().isoformat())
                     except Exception:
-                        normalized.append(raw)
-            elif typ == "date":
-                dt = try_parse_date(raw)
-                if not dt:
-                    is_valid = False
-                    messages.append(f"'{self.headers[i]}' expects a valid date (e.g., YYYY-MM-DD or DD/MM/YYYY).")
-                    ent.config(bg="#ffe6e6")
-                    normalized.append(None)
+                        is_valid = False
+                        messages.append(f"{col_name}: Invalid date format (use YYYY-MM-DD).")
+                        normalized.append(val)
                 else:
-                    ent.config(bg="#e6ffe6")
-                    # write as ISO string: YYYY-MM-DD
-                    normalized.append(dt.isoformat())
-            elif typ == "email":
-                if not EMAIL_RE.match(raw):
-                    is_valid = False
-                    messages.append(f"'{self.headers[i]}' expects a valid email address.")
-                    ent.config(bg="#ffe6e6")
                     normalized.append(None)
-                else:
-                    ent.config(bg="#e6ffe6")
-                    normalized.append(raw)
+
             else:
-                # text
-                ent.config(bg="#e6ffe6")
-                normalized.append(raw)
+                normalized.append(val)
 
         return is_valid, messages, normalized
 
@@ -456,9 +450,10 @@ class DynamicExcelApp:
             self.tree.insert("", tk.END, values=row_extended)
 
     # -----------------------
-    # Add row / Save / Save As
+    # Add / Edit Row + Save
     # -----------------------
     def add_row_from_inputs(self):
+        """Append a new row after validating input fields."""
         if not self.workbook or not self.active_sheet_name:
             messagebox.showwarning("No file", "Open an .xlsx file first.")
             return
@@ -469,23 +464,18 @@ class DynamicExcelApp:
             messagebox.showwarning("Validation failed", "\n".join(messages))
             return
 
-        # Append to sheet (in memory)
         sheet = self.workbook[self.active_sheet_name]
-        # Find first empty row after existing data
         append_row_idx = sheet.max_row + 1
 
-        # Write values with type awareness
+        # Write values into workbook
         for col_index, val in enumerate(normalized, start=1):
             cell = sheet.cell(row=append_row_idx, column=col_index)
-            # If numeric -> write as number
             rule = self.validation_rules[col_index - 1] if col_index - 1 < len(self.validation_rules) else {"type": "text"}
             if val is None:
                 cell.value = None
             elif rule.get("type") == "numeric" and isinstance(val, (int, float)):
                 cell.value = val
             elif rule.get("type") == "date":
-                # If date string in ISO -> write as string (Excel will often format automatically)
-                # Could write as datetime object if desired; writing as ISO is safe.
                 try:
                     cell.value = datetime.fromisoformat(val).date()
                 except Exception:
@@ -493,18 +483,118 @@ class DynamicExcelApp:
             else:
                 cell.value = val
 
-        # Update treeview immediately
-        display_row = [ (v if v is not None else "") for v in normalized ]
+        # Reflect in UI
+        display_row = [(v if v is not None else "") for v in normalized]
         self.tree.insert("", tk.END, values=display_row)
 
         self.unsaved_changes = True
-        self._update_status(f"Appended row to '{self.active_sheet_name}'. (Unsaved changes)")
+        self._update_status(f"Added new row to '{self.active_sheet_name}'.")
 
-        # Clear inputs for next entry
+        # Auto-save if enabled
+        if self.auto_save_var.get():
+            if self.save_file():
+                self._update_status(f"Auto-saved after adding new row ✅")
+
+        # Reset form
         self.clear_input_entries()
         if self.input_entries:
             self.input_entries[0].focus_set()
 
+    # -----------------------
+    # Editable Treeview Rows
+    # -----------------------
+    def on_tree_double_click(self, event):
+        """Enable editing mode by loading selected row data into input fields."""
+        selected_item = self.tree.focus()
+        if not selected_item:
+            return
+
+        values = self.tree.item(selected_item, "values")
+        if not values:
+            return
+
+        # Populate inputs
+        for entry, value in zip(self.input_entries, values):
+            entry.delete(0, tk.END)
+            entry.insert(0, value)
+
+        self.editing_item = selected_item
+        self.mode = "edit"
+
+        # Change button text + command
+        self.add_button.config(text="Update Row", command=self.update_row_from_inputs)
+
+        # ✅ Temporarily unbind <Return> from adding rows
+        for entry in self.input_entries:
+            entry.unbind("<Return>")
+            entry.bind("<Return>", lambda e: self.update_row_from_inputs())
+
+        # Focus first field
+        if self.input_entries:
+            self.input_entries[0].focus_set()
+
+        self._update_status("Editing existing row...")
+
+    def update_row_from_inputs(self):
+        """Update selected Treeview row and workbook entry."""
+        if not hasattr(self, "editing_item") or not self.editing_item:
+            messagebox.showinfo("No selection", "No row selected for editing.")
+            return
+
+        is_valid, messages, normalized = self.validate_inputs()
+        if not is_valid:
+            messagebox.showwarning("Validation failed", "\n".join(messages))
+            return
+
+        # Update Treeview
+        self.tree.item(self.editing_item, values=[(v if v is not None else "") for v in normalized])
+
+        # Update workbook
+        sheet = self.workbook[self.active_sheet_name]
+        row_index = self.tree.index(self.editing_item) + 2  # +2 for header row
+        for col_index, val in enumerate(normalized, start=1):
+            rule = self.validation_rules[col_index - 1] if col_index - 1 < len(self.validation_rules) else {"type": "text"}
+            cell = sheet.cell(row=row_index, column=col_index)
+            if val is None:
+                cell.value = None
+            elif rule.get("type") == "numeric" and isinstance(val, (int, float)):
+                cell.value = val
+            elif rule.get("type") == "date":
+                try:
+                    cell.value = datetime.fromisoformat(val).date()
+                except Exception:
+                    cell.value = val
+            else:
+                cell.value = val
+
+        self.unsaved_changes = True
+        self._update_status(f"Updated row {row_index - 1} successfully.")
+
+        # ✅ Re-highlight the updated row
+        self.tree.selection_set(self.editing_item)
+        self.tree.see(self.editing_item)
+
+        # ✅ Auto-save if enabled
+        if self.auto_save_var.get():
+            if self.save_file():
+                self._update_status("Auto-saved after editing row ✅")
+
+        # ✅ Reset UI and rebind Enter key for Add mode
+        self.clear_input_entries()
+        self.add_button.config(text="Add Row", command=self.add_row_from_inputs)
+        self.mode = "add"
+        self.editing_item = None
+
+        for entry in self.input_entries:
+            entry.unbind("<Return>")
+            entry.bind("<Return>", lambda e: self.add_row_from_inputs())
+
+        if self.input_entries:
+            self.input_entries[0].focus_set()
+
+    # -----------------------
+    # Save Operations
+    # -----------------------
     def save_file(self):
         if not self.workbook:
             messagebox.showwarning("No file", "No workbook is currently open.")
@@ -544,7 +634,6 @@ class DynamicExcelApp:
         theme_name = self.theme_combo.get()
         try:
             Style().theme_use(theme_name)
-            # Refresh styles (ttkbootstrap handles most)
             self._update_status(f"Theme changed to {theme_name}")
         except Exception as e:
             messagebox.showerror("Theme error", f"Cannot set theme {theme_name}:\n{e}")
@@ -562,12 +651,11 @@ class DynamicExcelApp:
         if self.unsaved_changes:
             res = messagebox.askyesnocancel("Unsaved changes", "You have unsaved changes. Save before exit?")
             if res is None:
-                return  # Cancel close
+                return
             if res:
                 if not self.save_file():
-                    return  # Save failed or cancelled; abort close
+                    return
 
-        # All good to close
         try:
             self.root.destroy()
         except Exception:
@@ -575,11 +663,20 @@ class DynamicExcelApp:
 
 
 def main():
-    # Initialize ttkbootstrap Window
-    app_root = Window(title=APP_TITLE, themename="cosmo")  # default theme; user can change
+    app_root = Window(title=APP_TITLE, themename="cosmo")
     app = DynamicExcelApp(app_root)
+
+    # --- Add Auto-Save Checkbox ---
+    app.auto_save_var = tk.BooleanVar(value=False)
+    auto_save_chk = ttk.Checkbutton(app_root, text="Auto-Save on Add/Edit", variable=app.auto_save_var)
+    auto_save_chk.pack(pady=3)
+
+    # Bind double-click editing
+    app.tree.bind("<Double-1>", app.on_tree_double_click)
+
     app_root.mainloop()
 
 
 if __name__ == "__main__":
     main()
+
