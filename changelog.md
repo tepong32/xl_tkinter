@@ -103,3 +103,6 @@ This file follows the [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) f
 - [ ] Modularize logic into UI, Validation, and ExcelHandler classes.  
 - [ ] Add export/import sheets, auto-save toggle, and footer.  
 - [ ] Improve responsiveness for smaller windows.  
+## v4.0.0 - 2025-10-16
+- testing-out python version manager.
+
