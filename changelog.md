@@ -117,4 +117,7 @@ This file follows the [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) f
 - Text validation still applies on edits,
 - Highlights on new row additions need to be re-implemented,
 - UI re-work for indicators and buttons needed.
+## v4.1.1 - 2025-10-17
+- Double-Click Edits and Delete Rows now working,
+Also updated visuals --- buttons, status indicators, etc
 

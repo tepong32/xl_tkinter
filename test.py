@@ -11,7 +11,7 @@ import tkinter as tk
 from tkinter import ttk, filedialog, messagebox
 from ttkbootstrap import Window, Style
 from openpyxl import load_workbook, Workbook
-from datetime import datetime
+from datetime import datetime, date
 
 APP_TITLE = "Data Entry v2+ — Dynamic Excel Companion (with Validation)"
 
@@ -55,12 +55,7 @@ def is_numeric(value: str):
 def normalize_numeric(value: str):
     return float(str(value).strip().replace(",", ""))
 
-def clean_spaces(value):
-    """Trim leading/trailing spaces and collapse multiple internal spaces to one."""
-    if isinstance(value, str):
-        return re.sub(r'\s+', ' ', value.strip())
-    return value
-    
+
 # -------------------------
 # Main app
 # -------------------------
@@ -86,6 +81,7 @@ class DynamicExcelApp:
         self._create_toolbar()
         self._create_top_frame()
         self._create_bottom_frame()
+        self._create_statusbar()
         self._bind_events()
 
         # Start with a clean app — prompt user to open file
@@ -120,19 +116,23 @@ class DynamicExcelApp:
         save_btn = ttk.Button(toolbar, text="Save", command=self.save_file)
         save_btn.pack(side=tk.LEFT, padx=(0, 6))
 
-        add_row_btn = ttk.Button(toolbar, text="Add Row", command=self.add_row_from_inputs)
-        add_row_btn.pack(side=tk.LEFT, padx=(0, 6))
+        # --- New: Delete Row Button ---
+        delete_btn = ttk.Button(toolbar, text="Delete Selected Row", command=self.delete_selected_row, style="danger.TButton")
+        delete_btn.pack(side=tk.LEFT, padx=(0, 12))
+
+        self.add_button = ttk.Button(toolbar, text="Add Row", command=self.add_row_from_inputs, style="success.TButton")
+        self.add_button.pack(side=tk.LEFT, padx=(0, 12))
 
         ttk.Label(toolbar, text="Sheet:").pack(side=tk.LEFT, padx=(12, 4))
         self.sheet_combo = ttk.Combobox(toolbar, state="readonly", width=30)
         self.sheet_combo.pack(side=tk.LEFT)
         self.sheet_combo.bind("<<ComboboxSelected>>", self.on_sheet_change)
 
-        # Spacer
+        # Spacer (removed status label from here)
         spacer = ttk.Label(toolbar, text="")
         spacer.pack(side=tk.LEFT, expand=True)
 
-        # Theme toggler using ttkbootstrap's Style
+        # Theme toggler
         ttk.Label(toolbar, text="Theme:").pack(side=tk.LEFT, padx=(6, 4))
         self.theme_combo = ttk.Combobox(toolbar, values=Style().theme_names(), state="readonly", width=15)
         self.theme_combo.set(Style().theme_use())
@@ -143,6 +143,13 @@ class DynamicExcelApp:
         self.status_var = tk.StringVar(value="No file opened.")
         self.status_label = ttk.Label(toolbar, textvariable=self.status_var)
         self.status_label.pack(side=tk.RIGHT)
+
+        # --- NEW METHOD: Status Bar ---
+    def _create_statusbar(self):
+        # The status bar replaces the old status label
+        self.status_var = tk.StringVar(value="No file opened.")
+        statusbar = ttk.Label(self.root, textvariable=self.status_var, relief=tk.SUNKEN, anchor=tk.W)
+        statusbar.pack(side=tk.BOTTOM, fill=tk.X)
 
     def _create_top_frame(self):
         # top frame will contain dynamic input fields (headers -> entries)
@@ -295,69 +302,34 @@ class DynamicExcelApp:
     def _infer_validation_rules(self, headers):
         """
         Heuristic inference of validation rules from header names.
-        Returns a list of dicts: {'type': 'text'|'numeric'|'date'|'email', 'required': bool}
+        Returns a list of dicts: {'name': str, 'type': 'text'|'numeric'|'date'|'email', 'required': bool}
         """
         rules = []
+        # Update numeric keywords to include common IDs that might be mistaken for numeric
         numeric_keywords = ("qty", "quantity", "amount", "price", "total", "number", "age", "count")
+        
         for h in headers:
             h_lower = h.lower() if h else ""
-            rule = {"type": "text", "required": True}
-            # optional indicator
-            if "optional" in h_lower or "[optional]" in h_lower or "(optional)" in h_lower:
-                rule["required"] = False
-            # date
+            rule = {"name": h, "type": "text", "required": True} # <--- FIXED: store header name
+            
+            # 1. Required indicator
+            if "optional" in h_lower or "[optional]" in h_lower or "(optional)" in h_lower or "id" in h_lower:
+                rule["required"] = False # IDs are often auto-generated, thus optional in data entry
+            
+            # 2. Type inference
             if "date" in h_lower or "dob" in h_lower or "birth" in h_lower:
                 rule["type"] = "date"
-            # numeric
-            elif any(k in h_lower for k in numeric_keywords):
-                rule["type"] = "numeric"
-            # email
             elif "email" in h_lower:
-                rule["type"] = "email"
-            # else keep text
+                rule["type"] = "email" # <--- NEW: added email type
+            elif any(k in h_lower for k in numeric_keywords) and "code" not in h_lower: # avoid 'invoice code'
+                rule["type"] = "numeric"
+            
+            # 3. Handle specific optional text fields (e.g., Description)
+            if rule["type"] == "text" and ("description" in h_lower or "notes" in h_lower):
+                 rule["required"] = False
+
             rules.append(rule)
         return rules
-
-    def _validate_single_field(self, idx):
-        """Validate a single input field (used on focusout). Returns True/False."""
-        if idx < 0 or idx >= len(self.input_entries):
-            return True
-        ent = self.input_entries[idx]
-        raw = ent.get().strip()
-        total = len(self.input_entries)
-
-        # Determine rule: last column optional
-        is_last = (idx == total - 1)
-        # Treat last column optional, others required
-        if is_last:
-            # optional: blank -> yellow (warning)
-            if raw == "":
-                try:
-                    ent.config(bg="#fff7cc")  # light yellow
-                except Exception:
-                    pass
-                return True
-            else:
-                try:
-                    ent.config(bg="white")
-                except Exception:
-                    pass
-                return True
-        else:
-            # required
-            if raw == "":
-                try:
-                    ent.config(bg="#ffe6e6")  # light red
-                except Exception:
-                    pass
-                return False
-            else:
-                try:
-                    ent.config(bg="white")
-                except Exception:
-                    pass
-                return True
-
 
     # -----------------------
     # Inputs builder & validation
@@ -368,33 +340,43 @@ class DynamicExcelApp:
         self.input_entries.clear()
 
     def _build_input_fields(self, headers):
-        """Create a horizontal layout of label+entry for each header.
-        - Entry widths scale with header length (min 15, max 50)
-        - Uses tk.Entry so bg color changes work for validation feedback.
-        """
+        """Create a horizontal layout of label+entry for each header."""
         self._clear_inputs_area()
 
-        # Keep everything left to right inside inputs_inner using grid
         for idx, header in enumerate(headers):
             col_frame = ttk.Frame(self.inputs_inner)
-            col_frame.grid(row=0, column=idx, padx=6, pady=4, sticky="n")
-            lbl = ttk.Label(col_frame, text=header, width=20, anchor="center")
+            col_frame.grid(row=0, column=idx, padx=6, pady=4)
+            
+            # --- Label improvement: Show (R) for required fields ---
+            rule = self.validation_rules[idx]
+            label_text = header
+            if rule.get("required"):
+                # Use a specific color/style for required fields
+                label_text = f"{header} (R)"
+                
+            lbl = ttk.Label(col_frame, text=label_text, width=20, anchor="center")
             lbl.pack(side=tk.TOP, fill=tk.X)
-
-            # dynamic width based on header length
-            calc_width = int(min(max(len(str(header)) * 2, 15), 50))
-
-            ent = tk.Entry(col_frame, width=calc_width)
-            ent.pack(side=tk.TOP, pady=(6, 0), fill=tk.X)
+            
+            # Use tk.Entry for easy bg color changes on validation
+            ent = tk.Entry(col_frame, width=20)
+            ent.pack(side=tk.TOP, pady=(6, 0))
+            
             # Pressing Enter in last entry triggers add row; else move to next
-            ent.bind("<Return>", lambda e, i=idx: self._on_enter_pressed(e, i))
-            # Validate on focus out so user gets immediate feedback
-            ent.bind("<FocusOut>", lambda e, i=idx: self._validate_single_field(i))
+            # NOTE: We bind to a lambda that captures the index i=idx
+            ent.bind("<Return>", lambda e, i=idx: self._on_enter_pressed(e, i)) 
             self.input_entries.append(ent)
-
-        # Add width fudge: update the canvas scroll region after a small delay
+            
+            # --- NEW: Status/Error Label (hidden by default) ---
+            # This is where we'll show specific validation errors for the field
+            error_var = tk.StringVar(value="")
+            error_lbl = ttk.Label(col_frame, textvariable=error_var, foreground="red", anchor="center")
+            error_lbl.pack(side=tk.TOP, fill=tk.X)
+            
+            # Attach the error variable to the entry widget for easy access in validate_inputs
+            ent.error_var = error_var 
+            
         self.root.after(100, lambda: self.input_canvas.configure(scrollregion=self.input_canvas.bbox("all")))
-
+        self.reset_to_add_mode() # Ensure focus and bindings are set correctly
 
     def _on_enter_pressed(self, event, idx):
         # If Enter pressed in last field, add row; else focus next.
@@ -403,118 +385,90 @@ class DynamicExcelApp:
         else:
             self.input_entries[idx + 1].focus_set()
 
+    # In DynamicExcelApp class:
+
     def validate_inputs(self):
         """
-        Validate all input entries based on inferred self.validation_rules.
+        Validate all input entries. Applies background color and error labels for feedback.
         Returns (is_valid: bool, messages: list, normalized_values: list)
-        normalized_values is suitable for writing into Excel (numbers, ISO date strings, or text).
         """
-        is_valid = True
-        messages = []
         normalized = []
+        messages = []
+        is_valid = True
 
-        total = len(self.input_entries)
-        for i, ent in enumerate(self.input_entries):
-            raw = clean_spaces(ent.get())  # Use clean_spaces here
-            # Determine rule: either inferred rule or fallback; last column optional
-            if i < len(self.validation_rules):
-                rule = dict(self.validation_rules[i])  # copy
-            else:
-                rule = {"type": "text", "required": True}
+        for i, entry in enumerate(self.input_entries):
+            val = entry.get()
+            rule = self.validation_rules[i]
+            col_name = rule["name"]
+            val_type = rule["type"]
+            required = rule["required"]
+            
+            # Reset feedback for this entry
+            entry.config(bg="white")
+            if hasattr(entry, 'error_var'):
+                entry.error_var.set("")
+            
+            val_stripped = val.strip()
 
-            # Enforce last-column optional override
-            if i == total - 1:
-                rule["required"] = False
+            # 1. Required check
+            if required and not val_stripped:
+                is_valid = False
+                messages.append(f"❌ {col_name}: Required.")
+                normalized.append(None)
+                entry.config(bg="#fbb") # Light red background for error
+                if hasattr(entry, 'error_var'):
+                    entry.error_var.set("Required")
+                continue # Move to next field
 
-            # Empty handling
-            if raw == "":
-                if rule.get("required", True):
-                    is_valid = False
-                    messages.append(f"'{self.headers[i]}' is required.")
-                    try:
-                        ent.config(bg="#ffe6e6")
-                    except Exception:
-                        pass
-                    normalized.append(None)
-                else:
-                    try:
-                        ent.config(bg="#fff7cc")  # optional left blank -> light yellow
-                    except Exception:
-                        pass
-                    normalized.append("")
-                continue
+            # Skip type validation for optional, empty fields
+            if not val_stripped and not required:
+                 normalized.append(None)
+                 continue
+            
+            # 2. Type-specific validation and normalization
+            try:
+                if val_type == "text":
+                    cleaned = re.sub(r"\s+", " ", val_stripped)
+                    normalized.append(cleaned if cleaned else None)
+                    
+                elif val_type == "numeric":
+                    # Use your defined helper functions
+                    if not is_numeric(val):
+                        raise ValueError("Invalid number")
+                    normalized.append(normalize_numeric(val)) 
 
-            # Type-specific validations
-            typ = rule.get("type", "text")
-            if typ == "numeric":
-                if not is_numeric(raw):
-                    is_valid = False
-                    messages.append(f"'{self.headers[i]}' expects a numeric value.")
-                    try:
-                        ent.config(bg="#ffe6e6")
-                    except Exception:
-                        pass
-                    normalized.append(None)
+                elif val_type == "date":
+                    # Use your defined helper functions
+                    date_obj = try_parse_date(val)
+                    if date_obj is None:
+                        # Added common format suggestion
+                        raise ValueError("Invalid date (Try YYYY-MM-DD)")
+                    # The normalized value is the date object for openpyxl
+                    normalized.append(date_obj) 
+
+                elif val_type == "email":
+                    if not EMAIL_RE.match(val_stripped):
+                        raise ValueError("Invalid email format")
+                    normalized.append(val_stripped)
+
                 else:
-                    try:
-                        ent.config(bg="white")
-                    except Exception:
-                        pass
-                    try:
-                        normalized.append(normalize_numeric(raw))
-                    except Exception:
-                        normalized.append(raw)
-            elif typ == "date":
-                dt = try_parse_date(raw)
-                if not dt:
-                    is_valid = False
-                    messages.append(f"'{self.headers[i]}' expects a valid date (e.g., YYYY-MM-DD or DD/MM/YYYY).")
-                    try:
-                        ent.config(bg="#ffe6e6")
-                    except Exception:
-                        pass
-                    normalized.append(None)
-                else:
-                    try:
-                        ent.config(bg="white")
-                    except Exception:
-                        pass
-                    normalized.append(dt.isoformat())
-            elif typ == "email":
-                if not EMAIL_RE.match(raw):
-                    is_valid = False
-                    messages.append(f"'{self.headers[i]}' expects a valid email address.")
-                    try:
-                        ent.config(bg="#ffe6e6")
-                    except Exception:
-                        pass
-                    normalized.append(None)
-                else:
-                    try:
-                        ent.config(bg="white")
-                    except Exception:
-                        pass
-                    normalized.append(raw)
-            else:
-                # text
-                try:
-                    ent.config(bg="white")
-                except Exception:
-                    pass
-                normalized.append(raw)
+                    normalized.append(val_stripped)
+
+            except ValueError as e:
+                is_valid = False
+                messages.append(f"❌ {col_name}: {e}")
+                entry.config(bg="#fbb")
+                if hasattr(entry, 'error_var'):
+                    entry.error_var.set(str(e))
+                normalized.append(val_stripped) # Keep raw value for display, but error out
 
         return is_valid, messages, normalized
-
-
 
     def clear_input_entries(self):
         for ent in self.input_entries:
             ent.delete(0, tk.END)
-            try:
-                ent.config(bg="white")
-            except Exception:
-                pass
-
+            # Reset background
+            ent.config(bg="white")
 
     # -----------------------
     # Treeview population
@@ -551,9 +505,10 @@ class DynamicExcelApp:
             self.tree.insert("", tk.END, values=row_extended)
 
     # -----------------------
-    # Add row / Save / Save As
+    # Add / Edit Row + Save
     # -----------------------
     def add_row_from_inputs(self):
+        """Append a new row after validating input fields."""
         if not self.workbook or not self.active_sheet_name:
             messagebox.showwarning("No file", "Open an .xlsx file first.")
             return
@@ -564,58 +519,221 @@ class DynamicExcelApp:
             messagebox.showwarning("Validation failed", "\n".join(messages))
             return
 
-        # Append to sheet (in memory)
         sheet = self.workbook[self.active_sheet_name]
-        # Find first empty row after existing data
-        append_row_idx = sheet.max_row + 1
-
-        # Write values with type awareness
+        
+        # Determine the row index to append to.
+        # This will be the first empty row *after* the header row and all existing data.
+        # openpyxl's max_row is a bit unreliable for 'truly empty' sheets, but generally okay after data entry.
+        append_row_idx = sheet.max_row + 1 
+        
+        # --- Simplified Write values into workbook ---
         for col_index, val in enumerate(normalized, start=1):
             cell = sheet.cell(row=append_row_idx, column=col_index)
-            rule = self.validation_rules[col_index - 1] if col_index - 1 < len(self.validation_rules) else {"type": "text"}
+            # The 'normalized' list now contains values ready for openpyxl (float, date object, or string/None)
+            cell.value = val 
+
+        # Reflect in UI: Treeview needs string representation for display
+        display_row = []
+        for val in normalized:
             if val is None:
-                cell.value = None
-            elif rule.get("type") == "numeric" and isinstance(val, (int, float)):
-                cell.value = val
-            elif rule.get("type") == "date":
-                try:
-                    # write as a date object when possible
-                    cell.value = datetime.fromisoformat(val).date()
-                except Exception:
-                    cell.value = val
+                display_row.append("")
+            elif isinstance(val, date):
+                # Use strftime to format the date as YYYY-MM-DD, removing any time component
+                display_row.append(val.strftime("%Y-%m-%d"))
+            elif isinstance(val, (int, float)):
+                 display_row.append(str(val)) # Convert number to string
             else:
-                cell.value = val
+                display_row.append(str(val))
 
-        # Update treeview immediately
-        display_row = [ (v if v is not None else "") for v in normalized ]
-        new_item = self.tree.insert("", tk.END, values=display_row)
+        # ----------------------------------------------------
+        # Highlight newly-added row
+        # ----------------------------------------------------
+        new_item_id = self.tree.insert("", tk.END, values=display_row)
 
-        # Mark unsaved
+        # 1. Clear any existing selection
+        self.tree.selection_remove(self.tree.selection()) 
+        # 2. Select the new row
+        self.tree.selection_set(new_item_id)
+        # 3. Ensure the new row is visible (scroll to it)
+        self.tree.see(new_item_id)
+        # ----------------------------------------------------
+
         self.unsaved_changes = True
-        self._update_status(f"Appended row to '{self.active_sheet_name}'. (Unsaved changes)")
+        self._update_status(f"Added new row to '{self.active_sheet_name}'.")
 
-        # Clear inputs for next entry and reset colors
+        # Auto-save if enabled
+        if self.auto_save_var.get():
+            if self.save_file():
+                self._update_status(f"Auto-saved after adding new row ✅")
+
+        # Reset form
         self.clear_input_entries()
         if self.input_entries:
             self.input_entries[0].focus_set()
 
-        # Highlight the newly added treeview item and scroll to it
+    # -----------------------
+    # Editable Treeview Rows
+    # -----------------------
+    def on_tree_double_click(self, event):
+        """Enable editing mode by loading selected row data into input fields."""
+        selected_item = self.tree.focus()
+        if not selected_item:
+            return
+
+        values = self.tree.item(selected_item, "values")
+        if not values:
+            return
+
+        # Clear previous error feedback before populating new data
+        self.clear_input_entries()
+
+        # Populate inputs
+        for entry, value in zip(self.input_entries, values):
+            entry.delete(0, tk.END)
+            entry.insert(0, value)
+
+        self.editing_item = selected_item
+        self.mode = "edit"
+
+        # Change button text + command
+        self.add_button.config(text="Update Row", command=self.update_row_from_inputs)
+
+        # ✅ Temporarily unbind <Return> from adding rows
+        for entry in self.input_entries:
+            entry.unbind("<Return>")
+            entry.bind("<Return>", lambda e: self.update_row_from_inputs())
+
+        # Focus first field
+        if self.input_entries:
+            self.input_entries[0].focus_set()
+
+        self._update_status("Editing existing row...")
+
+    def update_row_from_inputs(self):
+        """Update selected Treeview row and workbook entry."""
+        if not hasattr(self, "editing_item") or not self.editing_item:
+            messagebox.showinfo("No selection", "No row selected for editing.")
+            return
+
+        is_valid, messages, normalized = self.validate_inputs()
+        if not is_valid:
+            messagebox.showwarning("Validation failed", "\n".join(messages))
+            return
+
+        # Update Treeview - same conversion to display strings as in add_row
+        display_row = []
+        for val in normalized:
+            if val is None:
+                display_row.append("")
+            elif isinstance(val, date):
+                # Use strftime to format the date as YYYY-MM-DD, removing any time component
+                display_row.append(val.strftime("%Y-%m-%d"))
+            elif isinstance(val, (int, float)):
+                 display_row.append(str(val)) # Convert number to string
+            else:
+                display_row.append(str(val))
+
+        self.tree.item(self.editing_item, values=display_row) # Use converted display_row
+
+        # Update workbook - use normalized values (ready for openpyxl)
+        sheet = self.workbook[self.active_sheet_name]
+        # +2 for header row (assuming header is in row 1)
+        row_index = self.tree.index(self.editing_item) + 2 
+        
+        for col_index, val in enumerate(normalized, start=1):
+            cell = sheet.cell(row=row_index, column=col_index)
+            cell.value = val # Simple write of openpyxl-ready value
+
+        self.unsaved_changes = True
+        self._update_status(f"Updated row {row_index - 1} successfully.")
+
+        # ✅ Re-highlight the updated row
+        self.tree.selection_set(self.editing_item)
+        self.tree.see(self.editing_item)
+
+        # ✅ Auto-save if enabled
+        if self.auto_save_var.get():
+            if self.save_file():
+                self._update_status("Auto-saved after editing row ✅")
+
+        # ✅ Reset UI and rebind Enter key for Add mode
+        self.reset_to_add_mode()
+        self.clear_input_entries()
+        self.add_button.config(text="Add Row", command=self.add_row_from_inputs)
+        self.mode = "add"
+        self.editing_item = None
+
+        for entry in self.input_entries:
+            entry.unbind("<Return>")
+            entry.bind("<Return>", lambda e: self.add_row_from_inputs())
+
+        if self.input_entries:
+            self.input_entries[0].focus_set()
+
+    # In DynamicExcelApp class:
+
+    def delete_selected_row(self):
+        """Deletes the selected row from the Treeview and the in-memory Excel sheet."""
+        if not self.workbook or not self.active_sheet_name:
+            messagebox.showwarning("No file", "Open an .xlsx file first.")
+            return
+
+        selected_item = self.tree.focus()
+        if not selected_item:
+            messagebox.showinfo("No selection", "Please select a row to delete.")
+            return
+
+        # Confirmation dialog
+        confirm = messagebox.askyesno("Confirm Deletion", "Are you sure you want to delete the selected row? This action is irreversible before saving.")
+        if not confirm:
+            return
+
         try:
-            # remove existing highlight tags
-            for iid in self.tree.get_children():
-                self.tree.item(iid, tags=())
+            # 1. Determine Excel row index
+            sheet = self.workbook[self.active_sheet_name]
+            # +1 for row 1 being index 0 in treeview, +1 for the header row in Excel
+            excel_row_index = self.tree.index(selected_item) + 2 
 
-            self.tree.item(new_item, tags=("newrow",))
-            # Configure tag style (some tkinter backends allow tag_configure background)
-            self.tree.tag_configure("newrow", background="#d4f7d4")  # pale green
-            self.tree.selection_set(new_item)
-            self.tree.focus(new_item)
-            self.tree.see(new_item)
-            # optionally clear highlight after delay
-            self.root.after(900, lambda: self.tree.tag_configure("newrow", background=""))
-        except Exception:
-            pass
+            # 2. Remove row from Excel (openpyxl)
+            sheet.delete_rows(excel_row_index, 1)
 
+            # 3. Remove row from Treeview (Tkinter)
+            self.tree.delete(selected_item)
+
+            self.unsaved_changes = True
+            self._update_status(f"Deleted row from '{self.active_sheet_name}'.")
+
+            # Reset to add mode if we were editing the deleted row
+            if hasattr(self, "editing_item") and self.editing_item == selected_item:
+                self.reset_to_add_mode()
+                
+            # Auto-save if enabled (requires a small adjustment in `main` below)
+            if hasattr(self, 'auto_save_var') and self.auto_save_var.get():
+                if self.save_file():
+                    self._update_status("Auto-saved after deleting row ✅")
+
+        except Exception as e:
+            messagebox.showerror("Error", f"Failed to delete row:\n{e}")
+
+    def reset_to_add_mode(self):
+        """Helper to switch back to the default 'Add Row' state."""
+        self.clear_input_entries()
+        self.add_button.config(text="Add Row", command=self.add_row_from_inputs)
+        
+        # Re-bind Enter key for Add mode
+        for idx, entry in enumerate(self.input_entries):
+             entry.unbind("<Return>")
+             # Rebind the original logic (focus next or add row)
+             entry.bind("<Return>", lambda e, i=idx: self._on_enter_pressed(e, i)) 
+        
+        self.mode = "add"
+        self.editing_item = None
+        if self.input_entries:
+            self.input_entries[0].focus_set()
+
+    # -----------------------
+    # Save Operations
+    # -----------------------
     def save_file(self):
         if not self.workbook:
             messagebox.showwarning("No file", "No workbook is currently open.")
@@ -655,7 +773,6 @@ class DynamicExcelApp:
         theme_name = self.theme_combo.get()
         try:
             Style().theme_use(theme_name)
-            # Refresh styles (ttkbootstrap handles most)
             self._update_status(f"Theme changed to {theme_name}")
         except Exception as e:
             messagebox.showerror("Theme error", f"Cannot set theme {theme_name}:\n{e}")
@@ -673,12 +790,11 @@ class DynamicExcelApp:
         if self.unsaved_changes:
             res = messagebox.askyesnocancel("Unsaved changes", "You have unsaved changes. Save before exit?")
             if res is None:
-                return  # Cancel close
+                return
             if res:
                 if not self.save_file():
-                    return  # Save failed or cancelled; abort close
+                    return
 
-        # All good to close
         try:
             self.root.destroy()
         except Exception:
@@ -686,11 +802,22 @@ class DynamicExcelApp:
 
 
 def main():
-    # Initialize ttkbootstrap Window
-    app_root = Window(title=APP_TITLE, themename="cosmo")  # default theme; user can change
+    app_root = Window(title=APP_TITLE, themename="cosmo")
     app = DynamicExcelApp(app_root)
+
+    # --- Add Auto-Save Checkbox ---
+    # Attach to the app object for easy access in its methods
+    app.auto_save_var = tk.BooleanVar(value=False) 
+    auto_save_chk = ttk.Checkbutton(app_root, text="Auto-Save on Add/Edit/Delete", 
+                                    variable=app.auto_save_var, style="primary.TCheckbutton")
+    auto_save_chk.pack(side=tk.TOP, anchor=tk.NW, padx=10, pady=(0, 6)) # Positioned below toolbar
+
+    # Bind double-click editing
+    app.tree.bind("<Double-1>", app.on_tree_double_click)
+
     app_root.mainloop()
 
 
 if __name__ == "__main__":
     main()
+
