@@ -72,8 +72,10 @@ class DynamicExcelApp:
         self.headers = []
         self.input_entries = []  # list of tk.Entry widgets matching headers
         self.unsaved_changes = False
+        self.original_editing_values = {} # NEW: Store original values for uniqueness check exclusion
+        self.mode = "add" # Can be "add" or "edit"
 
-        # Inferred validation rules per column: list of dicts with keys: type ('text','numeric','date','email'), required(bool)
+        # Inferred validation rules per column: list of dicts
         self.validation_rules = []
 
         # UI elements
@@ -83,6 +85,8 @@ class DynamicExcelApp:
         self._create_bottom_frame()
         self._create_statusbar()
         self._bind_events()
+        
+        # NOTE: Auto-save var is attached in the `main` function below the class definition
 
         # Start with a clean app — prompt user to open file
         self._prompt_open_file_on_startup()
@@ -139,12 +143,6 @@ class DynamicExcelApp:
         self.theme_combo.bind("<<ComboboxSelected>>", self.on_theme_change)
         self.theme_combo.pack(side=tk.LEFT, padx=(0, 6))
 
-        # Status label
-        self.status_var = tk.StringVar(value="No file opened.")
-        self.status_label = ttk.Label(toolbar, textvariable=self.status_var)
-        self.status_label.pack(side=tk.RIGHT)
-
-        # --- NEW METHOD: Status Bar ---
     def _create_statusbar(self):
         # The status bar replaces the old status label
         self.status_var = tk.StringVar(value="No file opened.")
@@ -187,6 +185,9 @@ class DynamicExcelApp:
     def _bind_events(self):
         # Save prompt on close
         self.root.protocol("WM_DELETE_WINDOW", self.on_close)
+        # Bind double-click editing
+        self.tree.bind("<Double-1>", self.on_tree_double_click)
+
 
     # -----------------------
     # File and Sheet Handling
@@ -297,34 +298,40 @@ class DynamicExcelApp:
         self._load_treeview_rows(sheet, header_row_idx)
 
     # -----------------------
-    # Validation rule inference
+    # Validation rule inference (UPDATED)
     # -----------------------
     def _infer_validation_rules(self, headers):
         """
-        Heuristic inference of validation rules from header names.
-        Returns a list of dicts: {'name': str, 'type': 'text'|'numeric'|'date'|'email', 'required': bool}
+        Heuristic inference of validation rules from header names, including uniqueness.
+        Returns a list of dicts: {'name': str, 'type': 'text'|'numeric'|'date'|'email', 'required': bool, 'is_unique': bool}
         """
         rules = []
-        # Update numeric keywords to include common IDs that might be mistaken for numeric
         numeric_keywords = ("qty", "quantity", "amount", "price", "total", "number", "age", "count")
         
         for h in headers:
             h_lower = h.lower() if h else ""
-            rule = {"name": h, "type": "text", "required": True} # <--- FIXED: store header name
+            rule = {"name": h, "type": "text", "required": True, "is_unique": False} # <-- ADDED 'is_unique'
             
-            # 1. Required indicator
-            if "optional" in h_lower or "[optional]" in h_lower or "(optional)" in h_lower or "id" in h_lower:
-                rule["required"] = False # IDs are often auto-generated, thus optional in data entry
+            # 1. Check for (Unique) tag
+            if "(unique)" in h_lower or "id" in h_lower: # ID fields are often unique
+                rule["is_unique"] = True
+
+            # 2. Required indicator
+            if "optional" in h_lower or "[optional]" in h_lower or "(optional)" in h_lower:
+                rule["required"] = False
+            # If it's a unique ID, we generally make it optional if it might be auto-generated
+            elif "id" in h_lower and rule["is_unique"]: 
+                 rule["required"] = False
             
-            # 2. Type inference
+            # 3. Type inference
             if "date" in h_lower or "dob" in h_lower or "birth" in h_lower:
                 rule["type"] = "date"
             elif "email" in h_lower:
-                rule["type"] = "email" # <--- NEW: added email type
-            elif any(k in h_lower for k in numeric_keywords) and "code" not in h_lower: # avoid 'invoice code'
+                rule["type"] = "email" 
+            elif any(k in h_lower for k in numeric_keywords) and "code" not in h_lower: 
                 rule["type"] = "numeric"
             
-            # 3. Handle specific optional text fields (e.g., Description)
+            # 4. Handle specific optional text fields 
             if rule["type"] == "text" and ("description" in h_lower or "notes" in h_lower):
                  rule["required"] = False
 
@@ -332,7 +339,7 @@ class DynamicExcelApp:
         return rules
 
     # -----------------------
-    # Inputs builder & validation
+    # Inputs builder & validation (UPDATED)
     # -----------------------
     def _clear_inputs_area(self):
         for w in self.inputs_inner.winfo_children():
@@ -347,12 +354,17 @@ class DynamicExcelApp:
             col_frame = ttk.Frame(self.inputs_inner)
             col_frame.grid(row=0, column=idx, padx=6, pady=4)
             
-            # --- Label improvement: Show (R) for required fields ---
+            # --- Label improvement: Show (R) for required and (U) for unique fields ---
             rule = self.validation_rules[idx]
             label_text = header
+            indicators = []
             if rule.get("required"):
-                # Use a specific color/style for required fields
-                label_text = f"{header} (R)"
+                indicators.append("R")
+            if rule.get("is_unique"):
+                indicators.append("U")
+                
+            if indicators:
+                 label_text = f"{header} ({','.join(indicators)})"
                 
             lbl = ttk.Label(col_frame, text=label_text, width=20, anchor="center")
             lbl.pack(side=tk.TOP, fill=tk.X)
@@ -366,8 +378,7 @@ class DynamicExcelApp:
             ent.bind("<Return>", lambda e, i=idx: self._on_enter_pressed(e, i)) 
             self.input_entries.append(ent)
             
-            # --- NEW: Status/Error Label (hidden by default) ---
-            # This is where we'll show specific validation errors for the field
+            # --- NEW: Status/Error Label ---
             error_var = tk.StringVar(value="")
             error_lbl = ttk.Label(col_frame, textvariable=error_var, foreground="red", anchor="center")
             error_lbl.pack(side=tk.TOP, fill=tk.X)
@@ -381,12 +392,38 @@ class DynamicExcelApp:
     def _on_enter_pressed(self, event, idx):
         # If Enter pressed in last field, add row; else focus next.
         if idx == len(self.input_entries) - 1:
-            self.add_row_from_inputs()
+            if self.mode == "add":
+                self.add_row_from_inputs()
+            elif self.mode == "edit":
+                 self.update_row_from_inputs()
         else:
             self.input_entries[idx + 1].focus_set()
 
-    # In DynamicExcelApp class:
 
+    def _get_existing_column_data(self, col_index):
+        """
+        NEW HELPER: Retrieves all non-empty, normalized values from a specific column 
+        in the active sheet (data rows only). Returns a set for fast lookup.
+        """
+        if not self.workbook or not self.active_sheet_name:
+            return set()
+            
+        sheet = self.workbook[self.active_sheet_name]
+        
+        # We assume the data starts at row 2 (after the header row)
+        existing_values = set()
+        
+        # Iterate over all rows starting from the data rows (row 2 or higher)
+        for row_idx in range(2, sheet.max_row + 1): 
+            cell_value = sheet.cell(row=row_idx, column=col_index).value
+            if cell_value is not None:
+                # Normalize the value (strip whitespace, convert to string) for case-insensitive comparison
+                normalized_value = str(cell_value).strip()
+                if normalized_value:
+                    existing_values.add(normalized_value.lower()) 
+                    
+        return existing_values
+        
     def validate_inputs(self):
         """
         Validate all input entries. Applies background color and error labels for feedback.
@@ -395,6 +432,8 @@ class DynamicExcelApp:
         normalized = []
         messages = []
         is_valid = True
+        
+        is_edit_mode = self.mode == "edit"
 
         for i, entry in enumerate(self.input_entries):
             val = entry.get()
@@ -402,6 +441,7 @@ class DynamicExcelApp:
             col_name = rule["name"]
             val_type = rule["type"]
             required = rule["required"]
+            is_unique = rule.get("is_unique", False) # <-- GET THE NEW RULE
             
             # Reset feedback for this entry
             entry.config(bg="white")
@@ -425,25 +465,45 @@ class DynamicExcelApp:
                  normalized.append(None)
                  continue
             
-            # 2. Type-specific validation and normalization
+            # 2. Uniqueness Check (NEW LOGIC)
+            if is_unique:
+                col_index = i + 1
+                existing_data = self._get_existing_column_data(col_index=col_index)
+                
+                # Exclusion Logic for Edit Mode
+                is_original_value = False
+                if is_edit_mode:
+                    # Check if the entered value is the same as the value originally loaded from the row
+                    original_val = self.original_editing_values.get(col_index, "__NO_MATCH__")
+                    if val_stripped.lower() == original_val:
+                        # Value hasn't changed, so it can't be a duplicate of *itself*
+                        is_original_value = True
+                        
+                # Only check for duplication if it's NOT the original value
+                if not is_original_value and val_stripped.lower() in existing_data:
+                    is_valid = False
+                    messages.append(f"❌ {col_name}: Duplicate value found.")
+                    entry.config(bg="#fbb")
+                    if hasattr(entry, 'error_var'):
+                        entry.error_var.set("Duplicate value")
+                    normalized.append(val_stripped)
+                    continue # Stop further checks for this field
+
+            # 3. Type-specific validation and normalization
             try:
                 if val_type == "text":
                     cleaned = re.sub(r"\s+", " ", val_stripped)
                     normalized.append(cleaned if cleaned else None)
                     
                 elif val_type == "numeric":
-                    # Use your defined helper functions
                     if not is_numeric(val):
                         raise ValueError("Invalid number")
                     normalized.append(normalize_numeric(val)) 
 
                 elif val_type == "date":
-                    # Use your defined helper functions
                     date_obj = try_parse_date(val)
                     if date_obj is None:
-                        # Added common format suggestion
                         raise ValueError("Invalid date (Try YYYY-MM-DD)")
-                    # The normalized value is the date object for openpyxl
                     normalized.append(date_obj) 
 
                 elif val_type == "email":
@@ -460,15 +520,17 @@ class DynamicExcelApp:
                 entry.config(bg="#fbb")
                 if hasattr(entry, 'error_var'):
                     entry.error_var.set(str(e))
-                normalized.append(val_stripped) # Keep raw value for display, but error out
+                normalized.append(val_stripped) 
 
         return is_valid, messages, normalized
 
     def clear_input_entries(self):
         for ent in self.input_entries:
             ent.delete(0, tk.END)
-            # Reset background
+            # Reset background and error label
             ent.config(bg="white")
+            if hasattr(ent, 'error_var'):
+                ent.error_var.set("")
 
     # -----------------------
     # Treeview population
@@ -505,7 +567,7 @@ class DynamicExcelApp:
             self.tree.insert("", tk.END, values=row_extended)
 
     # -----------------------
-    # Add / Edit Row + Save
+    # Add / Edit / Delete Row
     # -----------------------
     def add_row_from_inputs(self):
         """Append a new row after validating input fields."""
@@ -516,20 +578,15 @@ class DynamicExcelApp:
         # Validate inputs
         is_valid, messages, normalized = self.validate_inputs()
         if not is_valid:
-            messagebox.showwarning("Validation failed", "\n".join(messages))
+            self._update_status(f"Validation failed on {len(messages)} field(s).")
             return
 
         sheet = self.workbook[self.active_sheet_name]
+        append_row_idx = sheet.max_row + 1  
         
-        # Determine the row index to append to.
-        # This will be the first empty row *after* the header row and all existing data.
-        # openpyxl's max_row is a bit unreliable for 'truly empty' sheets, but generally okay after data entry.
-        append_row_idx = sheet.max_row + 1 
-        
-        # --- Simplified Write values into workbook ---
+        # --- Write values into workbook ---
         for col_index, val in enumerate(normalized, start=1):
             cell = sheet.cell(row=append_row_idx, column=col_index)
-            # The 'normalized' list now contains values ready for openpyxl (float, date object, or string/None)
             cell.value = val 
 
         # Reflect in UI: Treeview needs string representation for display
@@ -538,31 +595,24 @@ class DynamicExcelApp:
             if val is None:
                 display_row.append("")
             elif isinstance(val, date):
-                # Use strftime to format the date as YYYY-MM-DD, removing any time component
+                # Use strftime to format the date as YYYY-MM-DD
                 display_row.append(val.strftime("%Y-%m-%d"))
             elif isinstance(val, (int, float)):
                  display_row.append(str(val)) # Convert number to string
             else:
                 display_row.append(str(val))
 
-        # ----------------------------------------------------
         # Highlight newly-added row
-        # ----------------------------------------------------
         new_item_id = self.tree.insert("", tk.END, values=display_row)
-
-        # 1. Clear any existing selection
-        self.tree.selection_remove(self.tree.selection()) 
-        # 2. Select the new row
+        self.tree.selection_remove(self.tree.selection())  
         self.tree.selection_set(new_item_id)
-        # 3. Ensure the new row is visible (scroll to it)
         self.tree.see(new_item_id)
-        # ----------------------------------------------------
 
         self.unsaved_changes = True
         self._update_status(f"Added new row to '{self.active_sheet_name}'.")
 
         # Auto-save if enabled
-        if self.auto_save_var.get():
+        if hasattr(self, 'auto_save_var') and self.auto_save_var.get():
             if self.save_file():
                 self._update_status(f"Auto-saved after adding new row ✅")
 
@@ -571,9 +621,6 @@ class DynamicExcelApp:
         if self.input_entries:
             self.input_entries[0].focus_set()
 
-    # -----------------------
-    # Editable Treeview Rows
-    # -----------------------
     def on_tree_double_click(self, event):
         """Enable editing mode by loading selected row data into input fields."""
         selected_item = self.tree.focus()
@@ -595,12 +642,19 @@ class DynamicExcelApp:
         self.editing_item = selected_item
         self.mode = "edit"
 
+        # --- NEW: Store original values for uniqueness check exclusion ---
+        self.original_editing_values = {}
+        for i, val in enumerate(values):
+            # Store the normalized (lowercase, stripped) value of the original cell data
+            self.original_editing_values[i + 1] = str(val).strip().lower() 
+            
         # Change button text + command
-        self.add_button.config(text="Update Row", command=self.update_row_from_inputs)
+        self.add_button.config(text="Update Row", command=self.update_row_from_inputs, style="warning.TButton")
 
-        # ✅ Temporarily unbind <Return> from adding rows
+        # Temporarily unbind <Return> from its original 'focus next' logic
         for entry in self.input_entries:
             entry.unbind("<Return>")
+            # Bind to a simple update call
             entry.bind("<Return>", lambda e: self.update_row_from_inputs())
 
         # Focus first field
@@ -617,7 +671,7 @@ class DynamicExcelApp:
 
         is_valid, messages, normalized = self.validate_inputs()
         if not is_valid:
-            messagebox.showwarning("Validation failed", "\n".join(messages))
+            self._update_status(f"Validation failed on {len(messages)} fields. See red fields.")
             return
 
         # Update Treeview - same conversion to display strings as in add_row
@@ -629,11 +683,11 @@ class DynamicExcelApp:
                 # Use strftime to format the date as YYYY-MM-DD, removing any time component
                 display_row.append(val.strftime("%Y-%m-%d"))
             elif isinstance(val, (int, float)):
-                 display_row.append(str(val)) # Convert number to string
+                 display_row.append(str(val)) 
             else:
                 display_row.append(str(val))
 
-        self.tree.item(self.editing_item, values=display_row) # Use converted display_row
+        self.tree.item(self.editing_item, values=display_row) 
 
         # Update workbook - use normalized values (ready for openpyxl)
         sheet = self.workbook[self.active_sheet_name]
@@ -642,35 +696,22 @@ class DynamicExcelApp:
         
         for col_index, val in enumerate(normalized, start=1):
             cell = sheet.cell(row=row_index, column=col_index)
-            cell.value = val # Simple write of openpyxl-ready value
+            cell.value = val 
 
         self.unsaved_changes = True
         self._update_status(f"Updated row {row_index - 1} successfully.")
 
-        # ✅ Re-highlight the updated row
+        # Re-highlight the updated row
         self.tree.selection_set(self.editing_item)
         self.tree.see(self.editing_item)
 
-        # ✅ Auto-save if enabled
-        if self.auto_save_var.get():
+        # Auto-save if enabled
+        if hasattr(self, 'auto_save_var') and self.auto_save_var.get():
             if self.save_file():
                 self._update_status("Auto-saved after editing row ✅")
 
-        # ✅ Reset UI and rebind Enter key for Add mode
+        # Reset UI and rebind Enter key for Add mode
         self.reset_to_add_mode()
-        self.clear_input_entries()
-        self.add_button.config(text="Add Row", command=self.add_row_from_inputs)
-        self.mode = "add"
-        self.editing_item = None
-
-        for entry in self.input_entries:
-            entry.unbind("<Return>")
-            entry.bind("<Return>", lambda e: self.add_row_from_inputs())
-
-        if self.input_entries:
-            self.input_entries[0].focus_set()
-
-    # In DynamicExcelApp class:
 
     def delete_selected_row(self):
         """Deletes the selected row from the Treeview and the in-memory Excel sheet."""
@@ -691,8 +732,7 @@ class DynamicExcelApp:
         try:
             # 1. Determine Excel row index
             sheet = self.workbook[self.active_sheet_name]
-            # +1 for row 1 being index 0 in treeview, +1 for the header row in Excel
-            excel_row_index = self.tree.index(selected_item) + 2 
+            excel_row_index = self.tree.index(selected_item) + 2  # +1 for header +1 for index offset
 
             # 2. Remove row from Excel (openpyxl)
             sheet.delete_rows(excel_row_index, 1)
@@ -707,7 +747,7 @@ class DynamicExcelApp:
             if hasattr(self, "editing_item") and self.editing_item == selected_item:
                 self.reset_to_add_mode()
                 
-            # Auto-save if enabled (requires a small adjustment in `main` below)
+            # Auto-save if enabled
             if hasattr(self, 'auto_save_var') and self.auto_save_var.get():
                 if self.save_file():
                     self._update_status("Auto-saved after deleting row ✅")
@@ -718,7 +758,7 @@ class DynamicExcelApp:
     def reset_to_add_mode(self):
         """Helper to switch back to the default 'Add Row' state."""
         self.clear_input_entries()
-        self.add_button.config(text="Add Row", command=self.add_row_from_inputs)
+        self.add_button.config(text="Add Row", command=self.add_row_from_inputs, style="success.TButton")
         
         # Re-bind Enter key for Add mode
         for idx, entry in enumerate(self.input_entries):
@@ -728,6 +768,7 @@ class DynamicExcelApp:
         
         self.mode = "add"
         self.editing_item = None
+        self.original_editing_values = {} # Clear stored original values
         if self.input_entries:
             self.input_entries[0].focus_set()
 
@@ -799,8 +840,10 @@ class DynamicExcelApp:
             self.root.destroy()
         except Exception:
             os._exit(0)
-
-
+            
+# -------------------------
+# Application Entry Point
+# -------------------------
 def main():
     app_root = Window(title=APP_TITLE, themename="cosmo")
     app = DynamicExcelApp(app_root)
@@ -812,12 +855,8 @@ def main():
                                     variable=app.auto_save_var, style="primary.TCheckbutton")
     auto_save_chk.pack(side=tk.TOP, anchor=tk.NW, padx=10, pady=(0, 6)) # Positioned below toolbar
 
-    # Bind double-click editing
-    app.tree.bind("<Double-1>", app.on_tree_double_click)
-
     app_root.mainloop()
 
 
 if __name__ == "__main__":
     main()
-
