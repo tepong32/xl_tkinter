@@ -1,164 +1,139 @@
 # Changelog
 
-## [4.1.2] - 2025-10-17
+## [4.3.0] - 2025-10-20
 ### 🚀 Added
-- test of the new version manager
+- added togglers for required fields and duplicate policies
 
-# 🧾 Project Changelog — Excel-Style Tkinter App
-
-All notable changes to this project will be documented here.
-This file follows the [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) format.
+## [4.2.0] - 2025-10-20
+### 🚀 Added
+- **Duplicate Checker Overhaul**
+  - Introduced per-header duplicate control options.
+  - Users can now choose whether duplicates should be ignored or allowed based on selected column headers.
+  - Upcoming feature: checkbox-based header selection for duplicate checking (replacing reliance on Excel’s headers).
 
 ---
 
-## [v4.2.0] - 2025-10-17
-
+## [4.1.3] - 2025-10-17
 ### 🚀 Added
 - **Column-Based Duplicate Checking (Uniqueness)**
-  - Introduced **mandatory uniqueness checks** for designated columns (e.g., fields containing `(Unique)` or `ID` in the header).
-  - Prevents duplicate entries from being added or created during edits.
+  - Enforced uniqueness on columns tagged as `(Unique)` or containing “ID”.
+  - Prevents duplicate entries on add/edit operations.
 - **Type-Specific Validation**
-  - Implemented strict type validation for **Numeric**, **Date**, and **Email** fields based on header keywords.
-  - Fields will now reject invalid input formats (e.g., non-numeric text, improperly formatted dates).
-- **Edit Mode Exclusion for Uniqueness**
-  - The uniqueness check intelligently **excludes the original cell's value** when a row is being edited, preventing false positive errors.
+  - Added field validation for numeric, date, and email types inferred from header keywords.
+- **Edit Mode Uniqueness Exclusion**
+  - Editing now ignores the current cell’s original value when checking duplicates.
 
 ### 💡 Improved
-- **Validation Rules Inference**
-  - The rule inference (`_infer_validation_rules`) now correctly identifies and marks fields as **Required (R)** and/or **Unique (U)** directly in the input field labels.
-- **User Feedback**
-  - Validation messages are now shown in a specific error label beneath each input field, in addition to the warning message box, for better field-level feedback.
-- **Enter Key Behavior**
-  - The `<Return>` key binding logic is now unified to either **Add Row** (in 'add' mode) or **Update Row** (in 'edit' mode) from any input field.
+- Inferred rules (`_infer_validation_rules`) now mark fields as **Required (R)** or **Unique (U)** directly in the input labels.
+- Inline validation messages appear under each input field for better clarity.
+- Unified Enter key logic to automatically add or update rows based on the mode.
 
 ### 🧠 Technical Notes
-- Introduced `_get_existing_column_data` helper for efficient set-based checking of unique values across the spreadsheet.
-- The `original_editing_values` dictionary is used to safely manage uniqueness checks in 'edit' mode.
-- The `validate_inputs` method now incorporates the full suite of type and uniqueness checks.
+- Added `_get_existing_column_data` helper for efficient set-based unique checks.
+- Introduced `original_editing_values` tracking for safe edit validation.
+- Enhanced `validate_inputs` for full type + uniqueness enforcement.
 
 ---
 
-## [v4.1.1] - 2025-10-17
-
-### 💡 Improved
-- Double-Click Edits and Delete Rows now working.
-- Updated visuals: buttons, status indicators, etc.
-
----
-
-## [v4.1.0] - 2025-10-16
-
+## [4.1.2] - 2025-10-17
 ### 🚀 Added
-- Added **edit rows** and **auto-save** features.
+- Integrated initial test run for the new version manager system.
+
+---
+
+## [4.1.1] - 2025-10-17
+### 💡 Improved
+- Fixed double-click edit and row deletion issues.
+- Polished UI (buttons, status indicators, and colors).
+
+---
+
+## [4.1.0] - 2025-10-16
+### 🚀 Added
+- Introduced **edit rows** and **auto-save** functionality.
 
 ### 🧹 Changed
-- Text validation still applies on edits.
-- Highlights on new row additions need to be re-implemented.
-- UI re-work for indicators and buttons needed.
+- Validation now applies during edits.
+- Highlighting for newly added rows pending re-implementation.
+- UI cleanup for future indicator updates.
 
 ---
 
-## [v4.0.2] - 2025-10-16
-- Trying patch versioning.
+## [4.0.2] - 2025-10-16
+### 🧪 Patch
+- Testing patch version increment behavior.
 
-## [v4.0.1] - 2025-10-16
-- Testing out python version manager.
+## [4.0.1] - 2025-10-16
+### 🧪 Patch
+- Initial test for Python-based version manager integration.
 
-## [v4.0.0] - 2025-10-16
-- Testing out python version manager.
+## [4.0.0] - 2025-10-16
+### 🚀 Major
+- Migration to Python version manager workflow.
 
 ---
 
-## [v2.0.0] - 2025-10-14
-
+## [2.0.0] - 2025-10-14
 ### 🚀 Added
 - **Dynamic Excel-Driven Data Entry**
-  - Automatically generates input fields based on the active sheet’s headers — no more fixed layouts.
+  - Auto-generates input fields from sheet headers.
 - **Sheet Switching Support**
-  - Dropdown (combobox) added to switch between sheets in the loaded workbook.
-  - The entry form and data table rebuild dynamically per sheet.
+  - Dropdown to change active sheet dynamically.
 - **Startup File Selection**
-  - Prompts the user to choose an Excel file (`.xlsx`) at launch, allowing flexible templates.
+  - Prompts user for Excel file at launch.
 - **Treeview Data Display**
-  - Displays current sheet data below the input area for quick review.
-  - Newly added rows are auto-highlighted for visual confirmation.
+  - Highlights new entries for better visibility.
 - **Save-on-Exit Prompt**
-  - Users are now asked to save before closing — mimicking Excel’s behavior.
+  - Asks to save before exiting.
 - **Input Cleanup & Validation Feedback**
-  - Inputs automatically trim leading, trailing, and multiple in-between spaces.
-  - Invalid fields highlight red (`#ffe6e6`), optional blanks (e.g., “Notes/Remarks”) yellow (`#fff7cc`), and valid fields reset to white.
-  - Real-time validation runs before committing data to Excel.
+  - Real-time validation with colored field feedback.
 
 ### 💡 Improved
-- **Adaptive Layout**
-  - The UI now flows top-to-bottom: entry fields first, data table below, creating a natural “press Enter to commit” workflow.
-- **Automatic Sheet Reconfiguration**
-  - Switching sheets refreshes field definitions and validation rules on the fly.
-- **Code Structure Refinement**
-  - Introduced `clean_spaces()` helper and reorganized validation logic for maintainability.
-- **Theme System**
-  - Light/Dark theme toggle preserved and fully compatible with new layout.
+- Adaptive UI layout and validation structure.
+- Refactored helper methods for maintainability.
+- Theme toggle and light/dark compatibility.
 
 ### 🧠 Technical Notes
-- Core Excel handling powered by **OpenPyXL**.
-- Input validation, highlight logic, and theme behavior retained from earlier versions.
-- Final column (usually “Notes” or “Remarks”) is optional by design.
-- Lays groundwork for autosave, editable rows, and import/export features in future versions.
-
-### 🔜 Planned
-- Export to CSV / JSON / SQL
-- Auto-save intervals and recovery
-- “New Excel File” creation wizard
-
-### 🧩 Version Summary
-
-| Component | Status |
-| :--- | :--- |
-| Core Excel I/O | ✅ Stable |
-| Dynamic Input UI | ✅ Implemented |
-| Theme Toggle | ✅ Preserved |
-| Save-on-Exit | ✅ Implemented |
-| Sheet Switcher | ✅ Implemented |
-| Validation | **✅ Enhanced** |
-| Export Options | ⏳ Planned |
-| Auto-Save | ✅ Implemented |
-| Type-Specific Inputs | **✅ Implemented** |
+- Uses **OpenPyXL** for all Excel I/O.
+- Establishes groundwork for autosave, edit, and export features.
 
 ---
 
-## [v0.8.2] - 2025-10-13
-
+## [0.8.2] - 2025-10-13
 ### ✨ Added
-- Theme Selection Combobox for instant Light/Dark mode switching.
-- Top bar with theme indicator for better UX.
+- Theme selection combobox for light/dark modes.
+- Top bar with active theme indicator.
 
 ### 💡 Improved
 - Header layout and toggler placement.
-- Grid-based entry layout maintained.
+- Grid-based entry layout cleanup.
 
 ### 🧹 Changed
-- Temporarily disabled validation highlighting (for refactor).
-- Streamlined imports and comments.
+- Temporarily disabled validation highlighting for refactor.
 
 ---
 
-## [v0.8.1] - 2025-10-11
-
+## [0.8.1] - 2025-10-11
 ### 🧩 Added
-- Base Excel integration using `openpyxl`.
-- Auto-create file with headers if missing.
-- Load and insert data directly from/to sheet.
-- “Add Record” button with simple input form.
+- Base Excel integration using **OpenPyXL**.
+- Auto-create Excel file with default headers.
+- Record insertion and display in Treeview.
 
 ### 🎨 Improved
-- Centered main window (1280×960) with min-size limits.
-- Applied `ttkbootstrap` themes.
-- Reversed display order (latest entries first).
+- Centered window (1280×960) with min-size limits.
+- Applied **ttkbootstrap** themes.
+- Reversed row display order (latest first).
 
 ---
 
-## [v0.8.0] - 2025-10-09
-
+## [0.8.0] - 2025-10-09
 ### 🚀 Initial Commit
-- Base Tkinter + ttkbootstrap structure.
-- Implemented form layout, data table (Treeview), and Excel I/O foundation.
+- Tkinter + ttkbootstrap structure.
+- Core Excel I/O and table integration.
+- Data entry form + Treeview foundation.
+
+---
+
+# 🧾 Project Changelog — Excel-Style Tkinter App
+All notable changes to this project will be documented here.
+This file follows the [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) format.
