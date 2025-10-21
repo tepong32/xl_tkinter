@@ -302,7 +302,7 @@ class DynamicExcelApp:
             self._update_status(f"Opened: {os.path.basename(path)}")
 
     def _insert_blank_row_below_selection(self):
-        """Insert a blank row above the selected row (Excel-style)."""
+        """Insert a blank row below the selected row (Excel-style)."""
         if not self.workbook or not self.active_sheet_name:
             messagebox.showwarning("No file", "Open an .xlsx file first.")
             return
@@ -310,12 +310,12 @@ class DynamicExcelApp:
         selected_item = self.tree.focus()
         sheet = self.workbook[self.active_sheet_name]
 
-        # Excel logic: insert ABOVE the current selection
         if selected_item:
-            excel_row_index = self.tree.index(selected_item) + 2  # +1 header +1 for zero-based idx
-            insert_index = self.tree.index(selected_item)
+            current_index = self.tree.index(selected_item)
+            excel_row_index = current_index + 3  # +2 header, +1 for below current
+            insert_index = current_index + 1
         else:
-            # If nothing selected, insert before the first data row
+            # If nothing selected, insert at top of data area
             excel_row_index = 2
             insert_index = 0
 
@@ -323,7 +323,11 @@ class DynamicExcelApp:
             sheet.insert_rows(excel_row_index, 1)
             blank_values = ["" for _ in self.headers]
             new_item = self.tree.insert("", insert_index, values=blank_values)
+
+            # --- FIXED VISUAL SELECTION BEHAVIOR ---
+            self.tree.selection_remove(self.tree.selection())
             self.tree.selection_set(new_item)
+            self.tree.focus(new_item)
             self.tree.see(new_item)
 
             # Flash green to indicate insertion
@@ -445,7 +449,7 @@ class DynamicExcelApp:
             # Define which headers should be treated as ID fields
             id_keywords = ("id", "no", "code", "ref", "reference")
 
-            # Auto-increment ID-like fields
+            # Auto-increment ID-like fields when possible
             new_values = []
             for h, v in zip(headers, values):
                 if not h:
@@ -456,7 +460,7 @@ class DynamicExcelApp:
                 v_str = str(v).strip()
 
                 if any(k in h_lower for k in id_keywords) and v_str != "":
-                    # Try to find trailing numeric pattern
+                    # Try to find trailing numeric pattern (e.g. "ID001" -> "ID002")
                     import re
                     match = re.search(r"(\d+)$", v_str)
                     if match:
@@ -467,23 +471,27 @@ class DynamicExcelApp:
                     elif v_str.isdigit():
                         new_values.append(str(int(v_str) + 1))
                     else:
-                        # Not incrementable
                         new_values.append(v_str)
                 else:
                     new_values.append(v)
 
             # Determine where to insert (below the current row)
             current_index = self.tree.index(selected_item)
-            excel_row_index = current_index + 3  # +2 for header row, +1 to go below current
+            excel_row_index = current_index + 3  # +2 header +1 for below current
 
             # Insert new row in workbook and copy values
             sheet.insert_rows(excel_row_index, 1)
             for col_index, val in enumerate(new_values, start=1):
                 sheet.cell(row=excel_row_index, column=col_index).value = val
 
-            # Insert new row visually in Treeview
+            # Insert new row visually in Treeview (below current)
             new_item = self.tree.insert("", current_index + 1, values=new_values)
+
+            # --- FIXED SELECTION BEHAVIOR ---
+            # Clear previous selection and move highlight to the new row
+            self.tree.selection_remove(self.tree.selection())
             self.tree.selection_set(new_item)
+            self.tree.focus(new_item)   # Force the focus to match the visual highlight
             self.tree.see(new_item)
 
             # Flash green to show duplication success
@@ -891,7 +899,6 @@ class DynamicExcelApp:
         if self.input_entries:
             self.input_entries[0].focus_set()
 
-
     def on_tree_double_click(self, event):
         """Enable editing mode by loading selected row data into input fields."""
         selected_item = self.tree.focus()
@@ -933,7 +940,6 @@ class DynamicExcelApp:
             self.input_entries[0].focus_set()
 
         self._update_status("Editing existing row...")
-
 
     def update_row_from_inputs(self):
         """Update selected Treeview row and workbook entry."""
@@ -1004,7 +1010,6 @@ class DynamicExcelApp:
         # Reset UI and rebind Enter key for Add mode
         self.reset_to_add_mode()
 
-
     def _flash_tree_row(self, item_id, color="#ccffcc", duration=800):
         """Temporarily flash a row background for visual feedback."""
         try:
@@ -1019,9 +1024,8 @@ class DynamicExcelApp:
             # Fail silently for robustness
             pass
 
-
     def delete_selected_row(self):
-        """Deletes the selected row from the Treeview and the in-memory Excel sheet with a flash animation."""
+        """Deletes the selected row from both the Treeview and the workbook with clear visual feedback."""
         if not self.workbook or not self.active_sheet_name:
             messagebox.showwarning("No file", "Open an .xlsx file first.")
             return
@@ -1031,41 +1035,52 @@ class DynamicExcelApp:
             messagebox.showinfo("No selection", "Please select a row to delete.")
             return
 
-        # Confirmation dialog first
-        confirm = messagebox.askyesno("Confirm Deletion", "Are you sure you want to delete the selected row? This action is irreversible before saving.")
+        confirm = messagebox.askyesno(
+            "Confirm Deletion",
+            "Are you sure you want to delete the selected row?\n\n"
+            "This action cannot be undone unless you reload the file."
+        )
         if not confirm:
             return
 
         # Flash red before deleting, then perform delete after short delay
         try:
             self._flash_tree_row(selected_item, color="#ffcccc", duration=300)
-            # Perform the deletion after the flash duration
             self.root.after(300, lambda: self._delete_row_after_flash(selected_item))
-        except Exception as e:
-            # Fall back to immediate deletion if flash fails for any reason
-            try:
-                self._delete_row_after_flash(selected_item)
-            except Exception as exc:
-                messagebox.showerror("Error", f"Failed to delete row:\n{exc}")
-
+        except Exception:
+            # Fallback if animation fails
+            self._delete_row_after_flash(selected_item)
 
     def _delete_row_after_flash(self, selected_item):
-        """Helper to actually perform deletion in workbook and treeview after the flash."""
+        """Helper to perform deletion in workbook and Treeview after flash animation."""
         try:
             sheet = self.workbook[self.active_sheet_name]
-            # Convert tree index to Excel row index (+2: 1 for header, 1 because tree index is 0-based)
-            excel_row_index = self.tree.index(selected_item) + 2
+            excel_row_index = self.tree.index(selected_item) + 2  # +2 for header
 
-            # Remove row from the workbook (openpyxl)
+            # Delete from workbook and Treeview
             sheet.delete_rows(excel_row_index, 1)
-
-            # Remove row from the Treeview UI
+            next_item = self.tree.next(selected_item)
+            prev_item = self.tree.prev(selected_item)
             self.tree.delete(selected_item)
 
             self.unsaved_changes = True
             self._update_status(f"Deleted row {excel_row_index - 1} from '{self.active_sheet_name}'.")
 
-            # Reset to add mode if we were editing the deleted row
+            # --- FIXED SELECTION BEHAVIOR ---
+            # Automatically select next or previous row for clarity
+            if next_item:
+                self.tree.selection_set(next_item)
+                self.tree.focus(next_item)
+                self.tree.see(next_item)
+            elif prev_item:
+                self.tree.selection_set(prev_item)
+                self.tree.focus(prev_item)
+                self.tree.see(prev_item)
+            else:
+                self.tree.selection_remove(self.tree.selection())
+                self.tree.focus("")  # Clear focus if no rows left
+
+            # Reset to Add mode if deleted item was being edited
             if hasattr(self, "editing_item") and self.editing_item == selected_item:
                 self.reset_to_add_mode()
 
