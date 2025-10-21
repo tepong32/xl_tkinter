@@ -1,5 +1,9 @@
 # Changelog
 
+## [5.1.0] - 2025-10-21
+### 🚀 Added
+- Expanded data-entry capabilities: Excel-like shortcuts, row duplication/insertion with animation, and header-aware numeric formatting.
+
 ## [4.3.0] - 2025-10-20
 ### 🚀 Added
 - added togglers for required fields and duplicate policies

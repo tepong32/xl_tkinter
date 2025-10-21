@@ -12,10 +12,48 @@ from tkinter import ttk, filedialog, messagebox
 from ttkbootstrap import Window, Style
 from openpyxl import load_workbook, Workbook
 from datetime import datetime, date
+import pandas as pd
+from openpyxl.utils.dataframe import dataframe_to_rows
 
 APP_TITLE = "Data Entry v2+ — Dynamic Excel Companion (with Validation)"
 
+# --------------------------------------------
+# Universal Excel Loader
+# --------------------------------------------
+def load_any_excel(path: str):
+    """
+    Load Excel, binary, or ODS file into an openpyxl Workbook.
+    Supports: .xlsx, .xlsm, .xlsb, .xls, .ods
+    Returns an openpyxl Workbook instance.
+    """
+    ext = os.path.splitext(path)[1].lower()
+    try:
+        if ext in [".xlsx", ".xlsm"]:
+            # Native openpyxl handling
+            return load_workbook(path)
 
+        elif ext == ".xlsb":
+            df = pd.read_excel(path, engine="pyxlsb")
+
+        elif ext == ".xls":
+            df = pd.read_excel(path, engine="xlrd")
+
+        elif ext == ".ods":
+            df = pd.read_excel(path, engine="odf")
+
+        else:
+            raise ValueError(f"Unsupported file format: {ext}")
+
+        # Convert DataFrame to openpyxl Workbook
+        wb = Workbook()
+        ws = wb.active
+        for r in dataframe_to_rows(df, index=False, header=True):
+            ws.append(r)
+        return wb
+
+    except Exception as e:
+        raise RuntimeError(f"Failed to load file ({ext}): {e}")
+    
 # -------------------------
 # Validation helpers
 # -------------------------
@@ -52,8 +90,22 @@ def is_numeric(value: str):
     except Exception:
         return False
 
-def normalize_numeric(value: str):
-    return float(str(value).strip().replace(",", ""))
+def normalize_numeric(value: str, fmt: str = "integer"):
+    """Normalize numeric strings based on desired format."""
+    if value is None or str(value).strip() == "":
+        return None
+
+    num = float(str(value).replace(",", "").strip())
+
+    if fmt == "decimal":
+        return round(num, 2)  # Keep 2 decimal places
+    else:
+        # Default: treat as integer-like, but preserve float if not whole
+        if num.is_integer():
+            return int(num)
+        else:
+            return num
+
 
 
 # -------------------------
@@ -85,11 +137,25 @@ class DynamicExcelApp:
         self._create_bottom_frame()
         self._create_statusbar()
         self._bind_events()
-        
+        self._bind_shortcuts()
         # NOTE: Auto-save var is attached in the `main` function below the class definition
 
         # Start with a clean app — prompt user to open file
         self._prompt_open_file_on_startup()
+
+    def _bind_shortcuts(self):
+        """Bind common Excel-like keyboard shortcuts."""
+        self.root.bind("<Control-o>", lambda e: self.open_file())
+        self.root.bind("<Control-s>", lambda e: self.save_file())
+        self.root.bind("<Control-S>", lambda e: self.save_file_as())  # Shift+S
+        self.root.bind("<Control-n>", lambda e: self.clear_input_entries())
+        self.root.bind("<Control-d>", lambda e: self._duplicate_selected_row()) 
+        self.root.bind("<F2>", lambda e: self.on_tree_double_click(e))
+        self.root.bind("<Escape>", lambda e: self.reset_to_add_mode())
+        # (Optional) Ctrl+Q to exit
+        self.root.bind("<Control-q>", lambda e: self.on_close())
+        self.root.bind("<Control-Shift-I>", lambda e: self._insert_blank_row_below_selection())
+        self.root.bind("<Control-Shift-D>", lambda e: self.delete_selected_row())
 
     # -----------------------
     # UI Construction
@@ -114,11 +180,12 @@ class DynamicExcelApp:
         toolbar = ttk.Frame(self.root)
         toolbar.pack(side=tk.TOP, fill=tk.X, padx=6, pady=6)
 
-        open_btn = ttk.Button(toolbar, text="Open File", command=self.open_file)
-        open_btn.pack(side=tk.LEFT, padx=(0, 6))
+        # removed these open and save buttons since keybind shortcuts are implemented
+        # open_btn = ttk.Button(toolbar, text="Open File", command=self.open_file)
+        # open_btn.pack(side=tk.LEFT, padx=(0, 6))
 
-        save_btn = ttk.Button(toolbar, text="Save", command=self.save_file)
-        save_btn.pack(side=tk.LEFT, padx=(0, 6))
+        # save_btn = ttk.Button(toolbar, text="Save", command=self.save_file)
+        # save_btn.pack(side=tk.LEFT, padx=(0, 6))
 
         # --- New: Delete Row Button ---
         delete_btn = ttk.Button(toolbar, text="Delete Selected Row", command=self.delete_selected_row, style="danger.TButton")
@@ -193,33 +260,94 @@ class DynamicExcelApp:
     # File and Sheet Handling
     # -----------------------
     def _prompt_open_file_on_startup(self):
-        # Clean workspace: prompt for file
-        answer = messagebox.askyesno("Open file", "Do you want to open an existing .xlsx file to work on?")
+        answer = messagebox.askyesno("Open file", "Is your Spreadsheet template sheet with headers ready for loading?")
         if answer:
             self.open_file()
         else:
-            self.status_var.set("Ready. Use File -> Open to open an .xlsx file.")
+            self.status_var.set("Ready. Use File -> Open or Ctrl+O to open a spreadsheet.")
 
     def open_file(self):
-        filetypes = [("Excel files", "*.xlsx")]
-        path = filedialog.askopenfilename(title="Open Excel file", filetypes=filetypes)
+        filetypes = [
+            ("All supported files", "*.xlsx *.xlsm *.xlsb *.xls *.ods"),
+            ("Excel files", "*.xlsx;*.xlsm;*.xlsb;*.xls"),
+            ("LibreOffice files", "*.ods"),
+        ]
+        path = filedialog.askopenfilename(title="Open spreadsheet", filetypes=filetypes)
         if not path:
             return
 
         try:
-            wb = load_workbook(path)
+            wb = load_any_excel(path)
         except Exception as e:
-            messagebox.showerror("Error", f"Failed to open workbook:\n{e}")
+            messagebox.showerror("Error", f"Failed to open file:\n{e}")
             return
 
         self.workbook = wb
         self.filepath = path
-        # default to active sheet
         self.active_sheet_name = self.workbook.active.title
         self._populate_sheet_selector()
         self._load_active_sheet()
         self.unsaved_changes = False
-        self._update_status(f"Opened: {os.path.basename(path)}")
+
+        # Warn if it’s a non-.xlsx file
+        ext = os.path.splitext(path)[1].lower()
+        if ext not in [".xlsx", ".xlsm"]:
+            self._update_status(f"Opened {os.path.basename(path)} (converted to in-memory .xlsx)")
+            messagebox.showinfo(
+                "Format Notice",
+                "This file was opened from a non-.xlsx format.\n\n"
+                "It will be saved as .xlsx when you save changes."
+            )
+        else:
+            self._update_status(f"Opened: {os.path.basename(path)}")
+
+    def _insert_blank_row_below_selection(self):
+        """Insert a blank row above the selected row (Excel-style)."""
+        if not self.workbook or not self.active_sheet_name:
+            messagebox.showwarning("No file", "Open an .xlsx file first.")
+            return
+
+        selected_item = self.tree.focus()
+        sheet = self.workbook[self.active_sheet_name]
+
+        # Excel logic: insert ABOVE the current selection
+        if selected_item:
+            excel_row_index = self.tree.index(selected_item) + 2  # +1 header +1 for zero-based idx
+            insert_index = self.tree.index(selected_item)
+        else:
+            # If nothing selected, insert before the first data row
+            excel_row_index = 2
+            insert_index = 0
+
+        try:
+            sheet.insert_rows(excel_row_index, 1)
+            blank_values = ["" for _ in self.headers]
+            new_item = self.tree.insert("", insert_index, values=blank_values)
+            self.tree.selection_set(new_item)
+            self.tree.see(new_item)
+
+            # Flash green to indicate insertion
+            self._flash_tree_row(new_item, color="#ccffcc", duration=700)
+
+            self.unsaved_changes = True
+            self._update_status(f"Inserted blank row at Excel row {excel_row_index}.")
+
+            # Auto-save if enabled
+            if hasattr(self, 'auto_save_var') and self.auto_save_var.get():
+                if self.save_file():
+                    self._update_status("Auto-saved after inserting row ✅")
+
+        except Exception as e:
+            messagebox.showerror("Error", f"Failed to insert row:\n{e}")
+
+    def _flash_tree_row(self, item_id, color="#ccffcc", duration=800):
+        """Temporarily flash a row background for visual feedback."""
+        try:
+            self.tree.tag_configure("flash", background=color)
+            self.tree.item(item_id, tags=("flash",))
+            self.root.after(duration, lambda: self.tree.item(item_id, tags=()))
+        except Exception:
+            pass
 
     def _populate_sheet_selector(self):
         if not self.workbook:
@@ -297,69 +425,133 @@ class DynamicExcelApp:
         self._build_input_fields(self.headers)
         self._load_treeview_rows(sheet, header_row_idx)
 
+    def _duplicate_selected_row(self):
+        """Duplicate the currently selected row (inserted right below it), auto-incrementing ID-like fields."""
+        if not self.workbook or not self.active_sheet_name:
+            messagebox.showwarning("No file", "Open an .xlsx file first.")
+            return
+
+        selected_item = self.tree.focus()
+        if not selected_item:
+            messagebox.showinfo("No selection", "Please select a row to duplicate.")
+            return
+
+        try:
+            # Get current row data
+            values = list(self.tree.item(selected_item, "values"))
+            sheet = self.workbook[self.active_sheet_name]
+            headers = self.headers
+
+            # Define which headers should be treated as ID fields
+            id_keywords = ("id", "no", "code", "ref", "reference")
+
+            # Auto-increment ID-like fields
+            new_values = []
+            for h, v in zip(headers, values):
+                if not h:
+                    new_values.append(v)
+                    continue
+
+                h_lower = str(h).lower()
+                v_str = str(v).strip()
+
+                if any(k in h_lower for k in id_keywords) and v_str != "":
+                    # Try to find trailing numeric pattern
+                    import re
+                    match = re.search(r"(\d+)$", v_str)
+                    if match:
+                        prefix = v_str[:match.start()]
+                        num = match.group(1)
+                        new_num = str(int(num) + 1).zfill(len(num))  # preserve zero-padding
+                        new_values.append(prefix + new_num)
+                    elif v_str.isdigit():
+                        new_values.append(str(int(v_str) + 1))
+                    else:
+                        # Not incrementable
+                        new_values.append(v_str)
+                else:
+                    new_values.append(v)
+
+            # Determine where to insert (below the current row)
+            current_index = self.tree.index(selected_item)
+            excel_row_index = current_index + 3  # +2 for header row, +1 to go below current
+
+            # Insert new row in workbook and copy values
+            sheet.insert_rows(excel_row_index, 1)
+            for col_index, val in enumerate(new_values, start=1):
+                sheet.cell(row=excel_row_index, column=col_index).value = val
+
+            # Insert new row visually in Treeview
+            new_item = self.tree.insert("", current_index + 1, values=new_values)
+            self.tree.selection_set(new_item)
+            self.tree.see(new_item)
+
+            # Flash green to show duplication success
+            self._flash_tree_row(new_item, color="#ccffcc", duration=700)
+
+            self.unsaved_changes = True
+            self._update_status(f"Duplicated row {current_index + 1} with auto-incremented IDs.")
+
+            # Auto-save if enabled
+            if hasattr(self, 'auto_save_var') and self.auto_save_var.get():
+                if self.save_file():
+                    self._update_status("Auto-saved after duplicating row ✅")
+
+        except Exception as e:
+            messagebox.showerror("Error", f"Failed to duplicate row:\n{e}")
+
     # -----------------------
     # Validation rule inference (UPDATED)
     # -----------------------
-    # In DynamicExcelApp._infer_validation_rules(self, headers)
-
     def _infer_validation_rules(self, headers):
         """
-        Heuristic inference of validation rules from header names, including uniqueness.
-        Returns a list of dicts: {'name': str, 'type': 'text'|..., 'required_var': tk.BVar, 'duplicate_var': tk.SVar, ...} 
+        Heuristic inference of validation rules from header names, including numeric formatting awareness.
+        Returns a list of dicts: {'name': str, 'type': 'text'|..., 'format': 'decimal'|'integer'|None, ...}
         """
         rules = []
-        numeric_keywords = ("qty", "quantity", "amount", "price", "total", "number", "age", "count")
-        
+        numeric_keywords = ("qty", "quantity", "number", "count", "age")
+        decimal_keywords = ("amount", "price", "rate", "total", "cost", "balance", "value")
+
         for h in headers:
             h_lower = h.lower() if h else ""
             
-            # --- Initialize default rule state ---
+            # --- Default states ---
+            val_type = "text"
+            num_format = None
             is_required_default = True
             duplicate_policy_default = "none"
-            val_type_default = "text"
-            
-            # 1. Determine Default Required Status
-            if "optional" in h_lower or "[optional]" in h_lower or "(optional)" in h_lower:
-                is_required_default = False
-            
-            # 2. Determine Default Duplicate Policy
-            if "(unique)" in h_lower or "[strict]" in h_lower or "id" in h_lower: 
-                duplicate_policy_default = "strict"
-            elif "(duplicate-warn)" in h_lower or "[warn]" in h_lower:
-                duplicate_policy_default = "warn"
 
-            # 3. Determine Default Type
-            if any(keyword in h_lower for keyword in numeric_keywords):
-                val_type_default = "numeric"
+            # Determine Type & Formatting
+            if any(k in h_lower for k in decimal_keywords):
+                val_type = "numeric"
+                num_format = "decimal"
+            elif any(k in h_lower for k in numeric_keywords):
+                val_type = "numeric"
+                num_format = "integer"
             elif "date" in h_lower:
-                val_type_default = "date"
+                val_type = "date"
             elif "email" in h_lower:
-                val_type_default = "email"
-                
-            # Final check for text fields often optional
-            if val_type_default == "text" and ("description" in h_lower or "notes" in h_lower):
-                 is_required_default = False
-            
-            # If it's a unique ID, we generally make it optional if it might be auto-generated
-            if val_type_default == "text" and "id" in h_lower and duplicate_policy_default == "strict": 
-                 is_required_default = False
-                 
-            # --- Create TK Variables and Final Rule Dict ---
-            
-            # We use is_required_default for initialization, 
-            # and 'required' (in the dict) for the current state.
+                val_type = "email"
+
+            # Duplicate/required logic
+            if "optional" in h_lower:
+                is_required_default = False
+            if "id" in h_lower or "code" in h_lower:
+                duplicate_policy_default = "strict"
+                is_required_default = False
+
             rule = {
-                "name": h, 
-                "type": val_type_default, 
-                # These vars hold the user's current selection
-                "required_var": tk.BooleanVar(value=is_required_default), 
+                "name": h,
+                "type": val_type,
+                "format": num_format,  # 👈 new key
+                "required_var": tk.BooleanVar(value=is_required_default),
                 "duplicate_var": tk.StringVar(value=duplicate_policy_default),
-                # This stores the inferred default state to use in validation
                 "required": is_required_default,
                 "duplicate_policy": duplicate_policy_default
             }
-            
+
             rules.append(rule)
+
         return rules
 
     # -----------------------
@@ -558,7 +750,7 @@ class DynamicExcelApp:
                 elif val_type == "numeric":
                     if not is_numeric(val):
                         raise ValueError("Invalid number")
-                    normalized.append(normalize_numeric(val)) 
+                    normalized.append(normalize_numeric(val, fmt=rule.get("format", "integer")))
 
                 elif val_type == "date":
                     date_obj = try_parse_date(val)
@@ -675,6 +867,8 @@ class DynamicExcelApp:
                 display_row.append(val.strftime("%Y-%m-%d"))
             elif isinstance(val, (int, float)):
                  display_row.append(str(val)) # Convert number to string
+            elif isinstance(val, float) and rule.get("format") == "decimal":
+                display_row.append(f"{val:.2f}")
             else:
                 display_row.append(str(val))
 
@@ -696,6 +890,7 @@ class DynamicExcelApp:
         self.clear_input_entries()
         if self.input_entries:
             self.input_entries[0].focus_set()
+
 
     def on_tree_double_click(self, event):
         """Enable editing mode by loading selected row data into input fields."""
@@ -739,6 +934,7 @@ class DynamicExcelApp:
 
         self._update_status("Editing existing row...")
 
+
     def update_row_from_inputs(self):
         """Update selected Treeview row and workbook entry."""
         if not hasattr(self, "editing_item") or not self.editing_item:
@@ -776,7 +972,9 @@ class DynamicExcelApp:
                 # Use strftime to format the date as YYYY-MM-DD, removing any time component
                 display_row.append(val.strftime("%Y-%m-%d"))
             elif isinstance(val, (int, float)):
-                 display_row.append(str(val)) 
+                display_row.append(str(val)) 
+            elif isinstance(val, float) and rule.get("format") == "decimal":
+                display_row.append(f"{val:.2f}")
             else:
                 display_row.append(str(val))
 
@@ -806,8 +1004,24 @@ class DynamicExcelApp:
         # Reset UI and rebind Enter key for Add mode
         self.reset_to_add_mode()
 
+
+    def _flash_tree_row(self, item_id, color="#ccffcc", duration=800):
+        """Temporarily flash a row background for visual feedback."""
+        try:
+            # Create a unique tag name for the flash to avoid clobbering existing tags
+            tag_name = f"flash_{item_id}"
+            self.tree.tag_configure(tag_name, background=color)
+            # Apply tag
+            self.tree.item(item_id, tags=(tag_name,))
+            # Remove tag after duration
+            self.root.after(duration, lambda: self.tree.item(item_id, tags=()))
+        except Exception:
+            # Fail silently for robustness
+            pass
+
+
     def delete_selected_row(self):
-        """Deletes the selected row from the Treeview and the in-memory Excel sheet."""
+        """Deletes the selected row from the Treeview and the in-memory Excel sheet with a flash animation."""
         if not self.workbook or not self.active_sheet_name:
             messagebox.showwarning("No file", "Open an .xlsx file first.")
             return
@@ -817,29 +1031,44 @@ class DynamicExcelApp:
             messagebox.showinfo("No selection", "Please select a row to delete.")
             return
 
-        # Confirmation dialog
+        # Confirmation dialog first
         confirm = messagebox.askyesno("Confirm Deletion", "Are you sure you want to delete the selected row? This action is irreversible before saving.")
         if not confirm:
             return
 
+        # Flash red before deleting, then perform delete after short delay
         try:
-            # 1. Determine Excel row index
-            sheet = self.workbook[self.active_sheet_name]
-            excel_row_index = self.tree.index(selected_item) + 2  # +1 for header +1 for index offset
+            self._flash_tree_row(selected_item, color="#ffcccc", duration=300)
+            # Perform the deletion after the flash duration
+            self.root.after(300, lambda: self._delete_row_after_flash(selected_item))
+        except Exception as e:
+            # Fall back to immediate deletion if flash fails for any reason
+            try:
+                self._delete_row_after_flash(selected_item)
+            except Exception as exc:
+                messagebox.showerror("Error", f"Failed to delete row:\n{exc}")
 
-            # 2. Remove row from Excel (openpyxl)
+
+    def _delete_row_after_flash(self, selected_item):
+        """Helper to actually perform deletion in workbook and treeview after the flash."""
+        try:
+            sheet = self.workbook[self.active_sheet_name]
+            # Convert tree index to Excel row index (+2: 1 for header, 1 because tree index is 0-based)
+            excel_row_index = self.tree.index(selected_item) + 2
+
+            # Remove row from the workbook (openpyxl)
             sheet.delete_rows(excel_row_index, 1)
 
-            # 3. Remove row from Treeview (Tkinter)
+            # Remove row from the Treeview UI
             self.tree.delete(selected_item)
 
             self.unsaved_changes = True
-            self._update_status(f"Deleted row from '{self.active_sheet_name}'.")
+            self._update_status(f"Deleted row {excel_row_index - 1} from '{self.active_sheet_name}'.")
 
             # Reset to add mode if we were editing the deleted row
             if hasattr(self, "editing_item") and self.editing_item == selected_item:
                 self.reset_to_add_mode()
-                
+
             # Auto-save if enabled
             if hasattr(self, 'auto_save_var') and self.auto_save_var.get():
                 if self.save_file():
@@ -847,6 +1076,7 @@ class DynamicExcelApp:
 
         except Exception as e:
             messagebox.showerror("Error", f"Failed to delete row:\n{e}")
+
 
     def reset_to_add_mode(self):
         """Helper to switch back to the default 'Add Row' state."""
@@ -884,6 +1114,7 @@ class DynamicExcelApp:
         except Exception as e:
             messagebox.showerror("Save error", f"Failed to save workbook:\n{e}")
             return False
+
 
     def save_file_as(self):
         filetypes = [("Excel files", "*.xlsx")]
