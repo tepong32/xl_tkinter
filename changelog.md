@@ -1,5 +1,9 @@
 # Changelog
 
+## [4.4.1] - 2025-10-21
+### 🚀 Added
+- updated main and backup versions to current build
+
 ## [4.4.0] - 2025-10-21
 ### 🚀 Added
 💡 Enhanced Treeview focus & selection consistency
