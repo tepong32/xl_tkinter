@@ -98,7 +98,7 @@ A modern **Excel-style data entry companion** built with **Tkinter** and **ttkbo
 
 ## 🧾 Credits
 
-- **Theme** → [rdbende/Forest-ttk-theme](https://github.com/rdbende/Forest-ttk-theme)  (initial app build but it now uses ttkbootstrap)
+- **Theme** → [rdbende/Forest-ttk-theme](https://github.com/rdbende/Forest-ttk-theme)  
 - **Tutorial Reference** → [Tkinter + ttkbootstrap YouTube Guide](https://www.youtube.com/watch?v=8m4uDS_nyCk)  
 - Built with ❤️ using Python, ttkbootstrap, and openpyxl  
 

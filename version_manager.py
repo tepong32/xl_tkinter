@@ -26,7 +26,7 @@ def get_current_version():
             raise ValueError
         return version
     except Exception:
-        print(Fore.RED + "⚠️  Invalid VERSION format — resetting to 0.0.0")
+        print(Fore.RED + "⚠️ Invalid VERSION format — resetting to 0.0.0")
         VERSION_FILE.write_text("0.0.0", encoding="utf-8")
         return "0.0.0"
 
@@ -50,65 +50,72 @@ def bump_version(current_version, bump_type):
     return new_version
 
 
-def update_files(new_version, message):
-    """Safely update version and changelog with UTF-8 encoding."""
-    VERSION_FILE.write_text(new_version.strip(), encoding="utf-8")
+def build_changelog_entry(new_version, message):
+    """Build changelog text for display or write."""
     date_str = datetime.now().strftime("%Y-%m-%d")
-    changelog_entry = f"## [{new_version}] - {date_str}\n### 🚀 Added\n- {message}\n\n" # Added [brackets] and section header
+    if "\n" in message:
+        return f"## [{new_version}] - {date_str}\n### 🚀 Added\n{message.strip()}\n\n"
+    else:
+        return f"## [{new_version}] - {date_str}\n### 🚀 Added\n- {message.strip()}\n\n"
+
+
+def update_files(new_version, message, dry_run=False):
+    """Safely update version and changelog with UTF-8 encoding."""
+    changelog_entry = build_changelog_entry(new_version, message)
+
+    if dry_run:
+        print(Style.BRIGHT + Fore.MAGENTA + "\n🚀 Dry Run Preview (no files written):\n")
+        print(Fore.CYAN + f"📦 VERSION would become:\n{new_version}\n")
+        print(Fore.CYAN + "📝 CHANGELOG entry would be:\n" + Fore.RESET + changelog_entry)
+        print(Fore.CYAN + "🪣 Git commit (simulated):\n" + Fore.RESET + f"\"{message.strip()} (v{new_version})\"\n")
+        print(Fore.GREEN + "✅ Nothing written. Use without --dry-run to apply changes.\n")
+        return
+
+    # --- Actual file write flow ---
+    VERSION_FILE.write_text(new_version.strip(), encoding="utf-8")
 
     # Read or create changelog
     if CHANGELOG_FILE.exists():
         try:
             content = CHANGELOG_FILE.read_text(encoding="utf-8").strip()
         except UnicodeDecodeError:
-            print(Fore.YELLOW + "⚠️  Changelog encoding issue — resetting to fresh format.")
+            print(Fore.YELLOW + "⚠️ Changelog encoding issue — resetting to fresh format.")
             content = "# Changelog\n\n"
         except Exception as e:
-            print(Fore.YELLOW + f"⚠️  Could not read changelog: {e}")
+            print(Fore.YELLOW + f"⚠️ Could not read changelog: {e}")
             content = "# Changelog\n\n"
     else:
         content = "# Changelog\n\n"
         print(Fore.YELLOW + "🪄 CHANGELOG.md not found — created fresh one")
 
-    # ----------------------------------------------------
-    # MODIFICATION START: Insert entry after the first heading
-    # ----------------------------------------------------
     if not content.startswith("# Changelog"):
         content = "# Changelog\n\n" + content
-        
-    # Find the position after the first line (the main heading)
-    # The default changelog template has a blank line after the heading, 
-    # so we'll look for the second newline character.
-    try:
-        # Find the index of the first character *after* the title and optional newlines
-        insert_index = content.find('\n', content.find('# Changelog') + len('# Changelog')) 
-        # Move past any subsequent blank lines (optional, but good for robustness)
-        while content[insert_index+1] in ('\n', ' '):
-             insert_index += 1
 
-        # Construct the new content: beginning + new entry + rest of content
+    try:
+        insert_index = content.find('\n', content.find('# Changelog') + len('# Changelog'))
+        while insert_index + 1 < len(content) and content[insert_index + 1] in ('\n', ' '):
+            insert_index += 1
         new_content = content[:insert_index] + "\n" + changelog_entry + content[insert_index:].strip()
-        
     except Exception:
-        # Fallback if parsing fails, just append (shouldn't happen with clean files)
         new_content = content + "\n" + changelog_entry
-        print(Fore.YELLOW + "⚠️  Failed to insert at top, appending to end.")
+        print(Fore.YELLOW + "⚠️ Failed to insert at top, appending to end.")
 
     CHANGELOG_FILE.write_text(new_content.strip() + "\n", encoding="utf-8")
-    # ----------------------------------------------------
-    # MODIFICATION END
-    # ----------------------------------------------------
+    print(Fore.GREEN + f"✅ Updated VERSION and CHANGELOG.md → v{new_version}")
 
 
-def git_commit_and_tag(new_version, message):
+def git_commit_and_tag(new_version, message, dry_run=False):
     """Commit and tag new version in git."""
+    if dry_run:
+        print(Fore.MAGENTA + "💡 Skipping git commit and tag (dry-run mode)\n")
+        return
     try:
         subprocess.run(["git", "add", "VERSION", "CHANGELOG.md"], check=True)
         subprocess.run(["git", "commit", "-m", f"{message} (v{new_version})"], check=True)
         subprocess.run(["git", "tag", f"v{new_version}"], check=True)
         print(Fore.GREEN + f"✅ Git commit + tag created for v{new_version}")
     except subprocess.CalledProcessError:
-        print(Fore.RED + "⚠️  Git commit or tag failed. Check if repo is clean.")
+        print(Fore.RED + "⚠️ Git commit or tag failed. Check if repo is clean.")
 
 
 # -------------------------------
@@ -119,18 +126,35 @@ def main():
     import sys
 
     if len(sys.argv) < 2:
-        print(Fore.YELLOW + "Usage: python version_manager.py 'commit message' [major|minor|patch]")
+        print(Fore.YELLOW + "Usage:")
+        print("  python version_manager.py \"Commit message\" [major|minor|patch] [--dry-run]")
+        print("  python version_manager.py \"\"\"Multiline changelog here\"\"\" [major|minor|patch] [--dry-run]")
         return
 
-    message = sys.argv[1]
-    bump_type = sys.argv[2] if len(sys.argv) > 2 else "patch"
+    args = sys.argv[1:]
+    dry_run = "--dry-run" in args
+
+    # Remove the flag so parsing is clean
+    args = [a for a in args if a != "--dry-run"]
+
+    if not args:
+        print(Fore.RED + "❌ No commit message provided.")
+        return
+
+    raw_input = args[0]
+    if raw_input.startswith(('"""', "'''")) and raw_input.endswith(('"""', "'''")):
+        message = raw_input.strip().strip('"').strip("'")
+    else:
+        message = raw_input
+
+    bump_type = args[1] if len(args) > 1 else "patch"
 
     current_version = get_current_version()
     new_version = bump_version(current_version, bump_type)
-    update_files(new_version, message)
-    git_commit_and_tag(new_version, message)
+    update_files(new_version, message, dry_run=dry_run)
+    git_commit_and_tag(new_version, message, dry_run=dry_run)
 
-    print(Style.BRIGHT + Fore.GREEN + f"\n🎉 Done! Released version v{new_version}\n")
+    print(Style.BRIGHT + Fore.GREEN + f"\n🎉 Done! {'(Preview only)' if dry_run else ''} Released version v{new_version}\n")
 
 
 if __name__ == "__main__":

@@ -1,8 +1,42 @@
 # Changelog
 
-## [4.3.0] - 2025-10-20
+## [4.4.0] - 2025-10-21
 ### 🚀 Added
-- added togglers for required fields and duplicate policies
+💡 Enhanced Treeview focus & selection consistency
+### 💡 Enhanced
+- Unified Treeview selection and focus handling for all row operations
+- Eliminated mismatch between visible highlight and active record
+- Improved user clarity and precision during row duplication, insertion, and deletion
+- Added automatic focus shifting after deletion (next or previous row)
+
+### ⚙️ Keyboard Shortcut Improvements
+- Ctrl+D → Duplicate selected row (new row now visually highlighted)
+- Ctrl+Shift+D → Delete selected row with visual feedback
+- Ctrl+Shift+I → Insert blank row below selection with proper focus
+
+## [4.3.0] - 2025-10-21
+### ✨ Added
+- Excel-style keyboard shortcuts for a smoother workflow  
+  (`Ctrl+O`, `Ctrl+S`, `Ctrl+Shift+S`, `Ctrl+N`, `Ctrl+D`, `Ctrl+Shift+D`, `Ctrl+Shift+I`, `F2`, `Esc`, `Ctrl+Q`)
+- Insert, delete, and duplicate row functionality with animated visual feedback  
+  (green flash for insert, red flash for delete)
+- Duplicate row feature that automatically increments ID-like fields (e.g., `ID001 → ID002`)
+- Header-aware numeric formatting:
+  - `amount`, `price`, `rate`, `total`, `cost`, and `balance` fields now round to **two decimals**
+  - Other numeric fields default to **whole numbers** but accept floats
+- Universal spreadsheet support:
+  - Now opens `.xlsx`, `.xlsm`, `.xlsb`, `.xls`, and `.ods` formats
+  - Non-`.xlsx` files are auto-converted for safe editing and saving
+- Enhanced status updates, error handling, and UX polish for better data-entry flow
+
+### 🧠 Improved
+- Validation logic now respects header context and numeric type inference  
+- Auto-save works seamlessly across all row operations (add/edit/delete/duplicate/insert)
+- General code cleanup for stability and maintainability
+
+### 🪄 Notes
+- This release focuses on making data entry more natural and Excel-like while enforcing validation consistency.  
+- Backward compatible — existing `.xlsx` files work without changes.
 
 ## [4.2.0] - 2025-10-20
 ### 🚀 Added
