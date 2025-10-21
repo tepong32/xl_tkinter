@@ -1,5 +1,19 @@
 # Changelog
 
+## [4.4.0] - 2025-10-21
+### 🚀 Added
+💡 Enhanced Treeview focus & selection consistency
+### 💡 Enhanced
+- Unified Treeview selection and focus handling for all row operations
+- Eliminated mismatch between visible highlight and active record
+- Improved user clarity and precision during row duplication, insertion, and deletion
+- Added automatic focus shifting after deletion (next or previous row)
+
+### ⚙️ Keyboard Shortcut Improvements
+- Ctrl+D → Duplicate selected row (new row now visually highlighted)
+- Ctrl+Shift+D → Delete selected row with visual feedback
+- Ctrl+Shift+I → Insert blank row below selection with proper focus
+
 ## [4.3.0] - 2025-10-21
 ### ✨ Added
 - Excel-style keyboard shortcuts for a smoother workflow  
