@@ -50,16 +50,29 @@ def bump_version(current_version, bump_type):
     return new_version
 
 
-def update_files(new_version, message):
-    """Safely update version and changelog with UTF-8 encoding."""
-    VERSION_FILE.write_text(new_version.strip(), encoding="utf-8")
+def build_changelog_entry(new_version, message):
+    """Build changelog text for display or write."""
     date_str = datetime.now().strftime("%Y-%m-%d")
-
-    # Preserve formatting for multiline markdown messages
     if "\n" in message:
-        changelog_entry = f"## [{new_version}] - {date_str}\n### 🚀 Added\n{message.strip()}\n\n"
+        return f"## [{new_version}] - {date_str}\n### 🚀 Added\n{message.strip()}\n\n"
     else:
-        changelog_entry = f"## [{new_version}] - {date_str}\n### 🚀 Added\n- {message.strip()}\n\n"
+        return f"## [{new_version}] - {date_str}\n### 🚀 Added\n- {message.strip()}\n\n"
+
+
+def update_files(new_version, message, dry_run=False):
+    """Safely update version and changelog with UTF-8 encoding."""
+    changelog_entry = build_changelog_entry(new_version, message)
+
+    if dry_run:
+        print(Style.BRIGHT + Fore.MAGENTA + "\n🚀 Dry Run Preview (no files written):\n")
+        print(Fore.CYAN + f"📦 VERSION would become:\n{new_version}\n")
+        print(Fore.CYAN + "📝 CHANGELOG entry would be:\n" + Fore.RESET + changelog_entry)
+        print(Fore.CYAN + "🪣 Git commit (simulated):\n" + Fore.RESET + f"\"{message.strip()} (v{new_version})\"\n")
+        print(Fore.GREEN + "✅ Nothing written. Use without --dry-run to apply changes.\n")
+        return
+
+    # --- Actual file write flow ---
+    VERSION_FILE.write_text(new_version.strip(), encoding="utf-8")
 
     # Read or create changelog
     if CHANGELOG_FILE.exists():
@@ -88,10 +101,14 @@ def update_files(new_version, message):
         print(Fore.YELLOW + "⚠️ Failed to insert at top, appending to end.")
 
     CHANGELOG_FILE.write_text(new_content.strip() + "\n", encoding="utf-8")
+    print(Fore.GREEN + f"✅ Updated VERSION and CHANGELOG.md → v{new_version}")
 
 
-def git_commit_and_tag(new_version, message):
+def git_commit_and_tag(new_version, message, dry_run=False):
     """Commit and tag new version in git."""
+    if dry_run:
+        print(Fore.MAGENTA + "💡 Skipping git commit and tag (dry-run mode)\n")
+        return
     try:
         subprocess.run(["git", "add", "VERSION", "CHANGELOG.md"], check=True)
         subprocess.run(["git", "commit", "-m", f"{message} (v{new_version})"], check=True)
@@ -110,25 +127,34 @@ def main():
 
     if len(sys.argv) < 2:
         print(Fore.YELLOW + "Usage:")
-        print("  python version_manager.py \"Commit message\" [major|minor|patch]")
-        print("  python version_manager.py \"\"\"Multiline changelog here\"\"\" [major|minor|patch]")
+        print("  python version_manager.py \"Commit message\" [major|minor|patch] [--dry-run]")
+        print("  python version_manager.py \"\"\"Multiline changelog here\"\"\" [major|minor|patch] [--dry-run]")
         return
 
-    # Handle multiline message (triple quotes)
-    raw_input = sys.argv[1]
+    args = sys.argv[1:]
+    dry_run = "--dry-run" in args
+
+    # Remove the flag so parsing is clean
+    args = [a for a in args if a != "--dry-run"]
+
+    if not args:
+        print(Fore.RED + "❌ No commit message provided.")
+        return
+
+    raw_input = args[0]
     if raw_input.startswith(('"""', "'''")) and raw_input.endswith(('"""', "'''")):
         message = raw_input.strip().strip('"').strip("'")
     else:
         message = raw_input
 
-    bump_type = sys.argv[2] if len(sys.argv) > 2 else "patch"
+    bump_type = args[1] if len(args) > 1 else "patch"
 
     current_version = get_current_version()
     new_version = bump_version(current_version, bump_type)
-    update_files(new_version, message)
-    git_commit_and_tag(new_version, message)
+    update_files(new_version, message, dry_run=dry_run)
+    git_commit_and_tag(new_version, message, dry_run=dry_run)
 
-    print(Style.BRIGHT + Fore.GREEN + f"\n🎉 Done! Released version v{new_version}\n")
+    print(Style.BRIGHT + Fore.GREEN + f"\n🎉 Done! {'(Preview only)' if dry_run else ''} Released version v{new_version}\n")
 
 
 if __name__ == "__main__":
