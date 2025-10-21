@@ -300,41 +300,65 @@ class DynamicExcelApp:
     # -----------------------
     # Validation rule inference (UPDATED)
     # -----------------------
+    # In DynamicExcelApp._infer_validation_rules(self, headers)
+
     def _infer_validation_rules(self, headers):
         """
         Heuristic inference of validation rules from header names, including uniqueness.
-        Returns a list of dicts: {'name': str, 'type': 'text'|'numeric'|'date'|'email', 'required': bool, 'is_unique': bool}
+        Returns a list of dicts: {'name': str, 'type': 'text'|..., 'required_var': tk.BVar, 'duplicate_var': tk.SVar, ...} 
         """
         rules = []
         numeric_keywords = ("qty", "quantity", "amount", "price", "total", "number", "age", "count")
         
         for h in headers:
             h_lower = h.lower() if h else ""
-            rule = {"name": h, "type": "text", "required": True, "is_unique": False} # <-- ADDED 'is_unique'
             
-            # 1. Check for (Unique) tag
-            if "(unique)" in h_lower or "id" in h_lower: # ID fields are often unique
-                rule["is_unique"] = True
-
-            # 2. Required indicator
+            # --- Initialize default rule state ---
+            is_required_default = True
+            duplicate_policy_default = "none"
+            val_type_default = "text"
+            
+            # 1. Determine Default Required Status
             if "optional" in h_lower or "[optional]" in h_lower or "(optional)" in h_lower:
-                rule["required"] = False
-            # If it's a unique ID, we generally make it optional if it might be auto-generated
-            elif "id" in h_lower and rule["is_unique"]: 
-                 rule["required"] = False
+                is_required_default = False
             
-            # 3. Type inference
-            if "date" in h_lower or "dob" in h_lower or "birth" in h_lower:
-                rule["type"] = "date"
-            elif "email" in h_lower:
-                rule["type"] = "email" 
-            elif any(k in h_lower for k in numeric_keywords) and "code" not in h_lower: 
-                rule["type"] = "numeric"
-            
-            # 4. Handle specific optional text fields 
-            if rule["type"] == "text" and ("description" in h_lower or "notes" in h_lower):
-                 rule["required"] = False
+            # 2. Determine Default Duplicate Policy
+            if "(unique)" in h_lower or "[strict]" in h_lower or "id" in h_lower: 
+                duplicate_policy_default = "strict"
+            elif "(duplicate-warn)" in h_lower or "[warn]" in h_lower:
+                duplicate_policy_default = "warn"
 
+            # 3. Determine Default Type
+            if any(keyword in h_lower for keyword in numeric_keywords):
+                val_type_default = "numeric"
+            elif "date" in h_lower:
+                val_type_default = "date"
+            elif "email" in h_lower:
+                val_type_default = "email"
+                
+            # Final check for text fields often optional
+            if val_type_default == "text" and ("description" in h_lower or "notes" in h_lower):
+                 is_required_default = False
+            
+            # If it's a unique ID, we generally make it optional if it might be auto-generated
+            if val_type_default == "text" and "id" in h_lower and duplicate_policy_default == "strict": 
+                 is_required_default = False
+                 
+            # --- Create TK Variables and Final Rule Dict ---
+            
+            # We use is_required_default for initialization, 
+            # and 'required' (in the dict) for the current state.
+            rule = {
+                "name": h, 
+                "type": val_type_default, 
+                # These vars hold the user's current selection
+                "required_var": tk.BooleanVar(value=is_required_default), 
+                "duplicate_var": tk.StringVar(value=duplicate_policy_default),
+                # This stores the inferred default state to use in validation
+                "required": is_required_default,
+                "duplicate_policy": duplicate_policy_default
+            }
+            
             rules.append(rule)
         return rules
 
@@ -347,47 +371,71 @@ class DynamicExcelApp:
         self.input_entries.clear()
 
     def _build_input_fields(self, headers):
-        """Create a horizontal layout of label+entry for each header."""
+        """Create a horizontal layout of label+entry, plus QoL controls for each header."""
         self._clear_inputs_area()
 
         for idx, header in enumerate(headers):
+            rule = self.validation_rules[idx]
+            
             col_frame = ttk.Frame(self.inputs_inner)
             col_frame.grid(row=0, column=idx, padx=6, pady=4)
             
-            # --- Label improvement: Show (R) for required and (U) for unique fields ---
-            rule = self.validation_rules[idx]
-            label_text = header
-            indicators = []
-            if rule.get("required"):
-                indicators.append("R")
-            if rule.get("is_unique"):
-                indicators.append("U")
-                
-            if indicators:
-                 label_text = f"{header} ({','.join(indicators)})"
-                
-            lbl = ttk.Label(col_frame, text=label_text, width=20, anchor="center")
+            # --- Label improvement: Show current state (R/U/W) ---
+            # This is complex to do dynamically, so we'll simplify the label and rely on the controls below.
+            lbl = ttk.Label(col_frame, text=header, width=20, anchor="center")
             lbl.pack(side=tk.TOP, fill=tk.X)
             
-            # Use tk.Entry for easy bg color changes on validation
+            # Entry and Error Label (existing logic)
             ent = tk.Entry(col_frame, width=20)
             ent.pack(side=tk.TOP, pady=(6, 0))
-            
-            # Pressing Enter in last entry triggers add row; else move to next
-            # NOTE: We bind to a lambda that captures the index i=idx
             ent.bind("<Return>", lambda e, i=idx: self._on_enter_pressed(e, i)) 
             self.input_entries.append(ent)
             
-            # --- NEW: Status/Error Label ---
             error_var = tk.StringVar(value="")
             error_lbl = ttk.Label(col_frame, textvariable=error_var, foreground="red", anchor="center")
             error_lbl.pack(side=tk.TOP, fill=tk.X)
-            
-            # Attach the error variable to the entry widget for easy access in validate_inputs
             ent.error_var = error_var 
             
+            # --- NEW QoL Controls Frame ---
+            control_frame = ttk.Frame(col_frame)
+            control_frame.pack(side=tk.TOP, fill=tk.X, pady=(5, 0))
+            
+            # 1. Required Checkbox
+            req_chk = ttk.Checkbutton(control_frame, text="Required", variable=rule['required_var'], 
+                                      command=lambda r=rule: self._update_validation_state(r))
+            req_chk.pack(anchor=tk.W)
+
+            # 2. Duplicate Radio Buttons
+            dup_lbl = ttk.Label(control_frame, text="Duplicate Policy:", style="TLabel")
+            dup_lbl.pack(anchor=tk.W, pady=(2, 0))
+            
+            # Radio button for None
+            ttk.Radiobutton(control_frame, text="None", variable=rule['duplicate_var'], value="none",
+                            command=lambda r=rule: self._update_validation_state(r)).pack(anchor=tk.W, padx=10)
+            
+            # Radio button for Warn
+            ttk.Radiobutton(control_frame, text="Warn", variable=rule['duplicate_var'], value="warn",
+                            command=lambda r=rule: self._update_validation_state(r)).pack(anchor=tk.W, padx=10)
+                            
+            # Radio button for Strict
+            ttk.Radiobutton(control_frame, text="Strict", variable=rule['duplicate_var'], value="strict",
+                            command=lambda r=rule: self._update_validation_state(r)).pack(anchor=tk.W, padx=10)
+            
         self.root.after(100, lambda: self.input_canvas.configure(scrollregion=self.input_canvas.bbox("all")))
-        self.reset_to_add_mode() # Ensure focus and bindings are set correctly
+        self.reset_to_add_mode()
+
+    def _update_validation_state(self, rule):
+        """Updates the internal validation rule dictionary from the user's QoL controls."""
+        
+        # Read the current Tk variable states
+        new_required = rule['required_var'].get()
+        new_duplicate_policy = rule['duplicate_var'].get()
+        
+        # Update the rule dictionary used by validate_inputs
+        rule["required"] = new_required
+        rule["duplicate_policy"] = new_duplicate_policy
+        
+        self._update_status(f"Validation policy updated for '{rule['name']}'. Required: {new_required}, Duplicate: {new_duplicate_policy}")
 
     def _on_enter_pressed(self, event, idx):
         # If Enter pressed in last field, add row; else focus next.
@@ -427,10 +475,11 @@ class DynamicExcelApp:
     def validate_inputs(self):
         """
         Validate all input entries. Applies background color and error labels for feedback.
-        Returns (is_valid: bool, messages: list, normalized_values: list)
+        Returns (is_valid: bool, strict_messages: list, warning_messages: list, normalized_values: list)
         """
         normalized = []
-        messages = []
+        strict_messages = []
+        warning_messages = [] 
         is_valid = True
         
         is_edit_mode = self.mode == "edit"
@@ -440,8 +489,9 @@ class DynamicExcelApp:
             rule = self.validation_rules[i]
             col_name = rule["name"]
             val_type = rule["type"]
-            required = rule["required"]
-            is_unique = rule.get("is_unique", False) # <-- GET THE NEW RULE
+            # --- CRITICAL: USE UPDATED STATE KEYS ---
+            required = rule["required"] 
+            duplicate_policy = rule["duplicate_policy"]
             
             # Reset feedback for this entry
             entry.config(bg="white")
@@ -449,11 +499,11 @@ class DynamicExcelApp:
                 entry.error_var.set("")
             
             val_stripped = val.strip()
-
+            
             # 1. Required check
             if required and not val_stripped:
                 is_valid = False
-                messages.append(f"❌ {col_name}: Required.")
+                strict_messages.append(f"❌ {col_name}: Required.") # <-- CORRECTED
                 normalized.append(None)
                 entry.config(bg="#fbb") # Light red background for error
                 if hasattr(entry, 'error_var'):
@@ -465,30 +515,40 @@ class DynamicExcelApp:
                  normalized.append(None)
                  continue
             
-            # 2. Uniqueness Check (NEW LOGIC)
-            if is_unique:
+            # 2. Uniqueness Check (MODIFIED LOGIC)
+            if duplicate_policy in ("strict", "warn"):
                 col_index = i + 1
                 existing_data = self._get_existing_column_data(col_index=col_index)
                 
                 # Exclusion Logic for Edit Mode
                 is_original_value = False
                 if is_edit_mode:
-                    # Check if the entered value is the same as the value originally loaded from the row
                     original_val = self.original_editing_values.get(col_index, "__NO_MATCH__")
+                    # Check against the normalized original value
                     if val_stripped.lower() == original_val:
-                        # Value hasn't changed, so it can't be a duplicate of *itself*
                         is_original_value = True
                         
                 # Only check for duplication if it's NOT the original value
                 if not is_original_value and val_stripped.lower() in existing_data:
-                    is_valid = False
-                    messages.append(f"❌ {col_name}: Duplicate value found.")
-                    entry.config(bg="#fbb")
-                    if hasattr(entry, 'error_var'):
-                        entry.error_var.set("Duplicate value")
-                    normalized.append(val_stripped)
-                    continue # Stop further checks for this field
-
+                    # DUPLICATE VIOLATION FOUND
+                    if duplicate_policy == "strict":
+                        # Treat as an error
+                        is_valid = False
+                        strict_messages.append(f"❌ {col_name}: Duplicate value found (Strict Policy).")
+                        entry.config(bg="#fbb")
+                        if hasattr(entry, 'error_var'):
+                            entry.error_var.set("Duplicate (Strict)")
+                        normalized.append(val_stripped)
+                        continue # Stop further checks for this field
+                    
+                    elif duplicate_policy == "warn":
+                        # Treat as a warning, but keep is_valid = True
+                        warning_messages.append(f"⚠️ {col_name}: Possible duplicate value found.")
+                        entry.config(bg="#ffdd99") # Yellow/orange background for warning
+                        if hasattr(entry, 'error_var'):
+                            entry.error_var.set("Possible Duplicate")
+                        # DO NOT continue, proceed to type check
+            
             # 3. Type-specific validation and normalization
             try:
                 if val_type == "text":
@@ -516,13 +576,13 @@ class DynamicExcelApp:
 
             except ValueError as e:
                 is_valid = False
-                messages.append(f"❌ {col_name}: {e}")
+                strict_messages.append(f"❌ {col_name}: {e}") # <-- CORRECTED
                 entry.config(bg="#fbb")
                 if hasattr(entry, 'error_var'):
                     entry.error_var.set(str(e))
-                normalized.append(val_stripped) 
+                normalized.append(val_stripped)
 
-        return is_valid, messages, normalized
+        return is_valid, strict_messages, warning_messages, normalized
 
     def clear_input_entries(self):
         for ent in self.input_entries:
@@ -575,11 +635,27 @@ class DynamicExcelApp:
             messagebox.showwarning("No file", "Open an .xlsx file first.")
             return
 
-        # Validate inputs
-        is_valid, messages, normalized = self.validate_inputs()
+        # Validate inputs # --- CRITICAL CHANGE: Capture warnings list ---
+        is_valid, strict_messages, warning_messages, normalized = self.validate_inputs()
+
+        # 1. Handle Strict Validation Failure
         if not is_valid:
-            self._update_status(f"Validation failed on {len(messages)} field(s).")
+            self._update_status(f"Strict validation failed on {len(strict_messages)} field(s).")
             return
+            
+        # 2. Handle Duplicate Warnings and Prompt User
+        if warning_messages:
+            warning_text = "\n".join(warning_messages)
+            prompt = (
+                "The following potential duplicate entries were detected:\n\n"
+                f"{warning_text}\n\n"
+                "Do you still want to add this record?"
+            )
+            res = messagebox.askyesno("Possible Duplicate Detected", prompt, icon='warning')
+            
+            if not res:
+                self._update_status("Addition cancelled due to duplicate warning.")
+                return # User chose not to proceed
 
         sheet = self.workbook[self.active_sheet_name]
         append_row_idx = sheet.max_row + 1  
@@ -669,10 +745,27 @@ class DynamicExcelApp:
             messagebox.showinfo("No selection", "No row selected for editing.")
             return
 
-        is_valid, messages, normalized = self.validate_inputs()
+        # --- CRITICAL CHANGE: Capture warnings list ---
+        is_valid, strict_messages, warning_messages, normalized = self.validate_inputs()
+        
+        # 1. Handle Strict Validation Failure
         if not is_valid:
-            self._update_status(f"Validation failed on {len(messages)} fields. See red fields.")
+            self._update_status(f"Strict validation failed on {len(strict_messages)} fields. See red fields.")
             return
+
+        # 2. Handle Duplicate Warnings and Prompt User
+        if warning_messages:
+            warning_text = "\n".join(warning_messages)
+            prompt = (
+                "The following potential duplicate entries were detected:\n\n"
+                f"{warning_text}\n\n"
+                "Do you still want to update this record?"
+            )
+            res = messagebox.askyesno("Possible Duplicate Detected", prompt, icon='warning')
+            
+            if not res:
+                self._update_status("Update cancelled due to duplicate warning.")
+                return # User chose not to proceed
 
         # Update Treeview - same conversion to display strings as in add_row
         display_row = []
