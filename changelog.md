@@ -1,12 +1,28 @@
 # Changelog
 
-## [5.1.0] - 2025-10-21
-### 🚀 Added
-- Expanded data-entry capabilities: Excel-like shortcuts, row duplication/insertion with animation, and header-aware numeric formatting.
+## [4.3.0] - 2025-10-21
+### ✨ Added
+- Excel-style keyboard shortcuts for a smoother workflow  
+  (`Ctrl+O`, `Ctrl+S`, `Ctrl+Shift+S`, `Ctrl+N`, `Ctrl+D`, `Ctrl+Shift+D`, `Ctrl+Shift+I`, `F2`, `Esc`, `Ctrl+Q`)
+- Insert, delete, and duplicate row functionality with animated visual feedback  
+  (green flash for insert, red flash for delete)
+- Duplicate row feature that automatically increments ID-like fields (e.g., `ID001 → ID002`)
+- Header-aware numeric formatting:
+  - `amount`, `price`, `rate`, `total`, `cost`, and `balance` fields now round to **two decimals**
+  - Other numeric fields default to **whole numbers** but accept floats
+- Universal spreadsheet support:
+  - Now opens `.xlsx`, `.xlsm`, `.xlsb`, `.xls`, and `.ods` formats
+  - Non-`.xlsx` files are auto-converted for safe editing and saving
+- Enhanced status updates, error handling, and UX polish for better data-entry flow
 
-## [4.3.0] - 2025-10-20
-### 🚀 Added
-- added togglers for required fields and duplicate policies
+### 🧠 Improved
+- Validation logic now respects header context and numeric type inference  
+- Auto-save works seamlessly across all row operations (add/edit/delete/duplicate/insert)
+- General code cleanup for stability and maintainability
+
+### 🪄 Notes
+- This release focuses on making data entry more natural and Excel-like while enforcing validation consistency.  
+- Backward compatible — existing `.xlsx` files work without changes.
 
 ## [4.2.0] - 2025-10-20
 ### 🚀 Added
