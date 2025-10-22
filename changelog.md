@@ -1,6 +1,6 @@
 # Changelog
 
-## [4.5.0] - 2025-10-22
+## [3.2.0] - 2025-10-22
 ### 🚀 Added
 - Help Card reading from help.txt (scrollable, themed window)
 - ❓ Help button beside Theme selector with tooltip + hover
@@ -11,11 +11,7 @@
 - Replaced old status bar with color-coded, right-aligned version featuring fade-out transitions
 - Minor styling cleanup and readiness for future Markdown help support
 
-## [4.4.1] - 2025-10-21
-### 🚀 Added
-- updated main and backup versions to current build
-
-## [4.4.0] - 2025-10-21
+## [3.1.0] - 2025-10-21
 ### 🚀 Added
 💡 Enhanced Treeview focus & selection consistency
 ### 💡 Enhanced
@@ -23,13 +19,14 @@
 - Eliminated mismatch between visible highlight and active record
 - Improved user clarity and precision during row duplication, insertion, and deletion
 - Added automatic focus shifting after deletion (next or previous row)
+- Updated main and backup versions to current build
 
 ### ⚙️ Keyboard Shortcut Improvements
 - Ctrl+D → Duplicate selected row (new row now visually highlighted)
 - Ctrl+Shift+D → Delete selected row with visual feedback
 - Ctrl+Shift+I → Insert blank row below selection with proper focus
 
-## [4.3.0] - 2025-10-21
+## [3.0.0] - 2025-10-21
 ### ✨ Added
 - Excel-style keyboard shortcuts for a smoother workflow  
   (`Ctrl+O`, `Ctrl+S`, `Ctrl+Shift+S`, `Ctrl+N`, `Ctrl+D`, `Ctrl+Shift+D`, `Ctrl+Shift+I`, `F2`, `Esc`, `Ctrl+Q`)
@@ -53,16 +50,14 @@
 - This release focuses on making data entry more natural and Excel-like while enforcing validation consistency.  
 - Backward compatible — existing `.xlsx` files work without changes.
 
-## [4.2.0] - 2025-10-20
+## [2.7.0] - 2025-10-20
 ### 🚀 Added
 - **Duplicate Checker Overhaul**
   - Introduced per-header duplicate control options.
   - Users can now choose whether duplicates should be ignored or allowed based on selected column headers.
   - Upcoming feature: checkbox-based header selection for duplicate checking (replacing reliance on Excel’s headers).
 
----
-
-## [4.1.3] - 2025-10-17
+## [2.6.0] - 2025-10-17
 ### 🚀 Added
 - **Column-Based Duplicate Checking (Uniqueness)**
   - Enforced uniqueness on columns tagged as `(Unique)` or containing “ID”.
@@ -82,22 +77,16 @@
 - Introduced `original_editing_values` tracking for safe edit validation.
 - Enhanced `validate_inputs` for full type + uniqueness enforcement.
 
----
-
-## [4.1.2] - 2025-10-17
+## [2.5.0] - 2025-10-17
 ### 🚀 Added
 - Integrated initial test run for the new version manager system.
 
----
-
-## [4.1.1] - 2025-10-17
+## [2.4.0] - 2025-10-17
 ### 💡 Improved
 - Fixed double-click edit and row deletion issues.
 - Polished UI (buttons, status indicators, and colors).
 
----
-
-## [4.1.0] - 2025-10-16
+## [2.3.0] - 2025-10-16
 ### 🚀 Added
 - Introduced **edit rows** and **auto-save** functionality.
 
@@ -106,21 +95,13 @@
 - Highlighting for newly added rows pending re-implementation.
 - UI cleanup for future indicator updates.
 
----
-
-## [4.0.2] - 2025-10-16
+## [2.0.2] - 2025-10-16
 ### 🧪 Patch
 - Testing patch version increment behavior.
 
-## [4.0.1] - 2025-10-16
+## [2.0.1] - 2025-10-16
 ### 🧪 Patch
 - Initial test for Python-based version manager integration.
-
-## [4.0.0] - 2025-10-16
-### 🚀 Major
-- Migration to Python version manager workflow.
-
----
 
 ## [2.0.0] - 2025-10-14
 ### 🚀 Added
@@ -148,7 +129,7 @@
 
 ---
 
-## [0.8.2] - 2025-10-13
+## [0.1.2] - 2025-10-13
 ### ✨ Added
 - Theme selection combobox for light/dark modes.
 - Top bar with active theme indicator.
@@ -162,7 +143,7 @@
 
 ---
 
-## [0.8.1] - 2025-10-11
+## [0.1.1] - 2025-10-11
 ### 🧩 Added
 - Base Excel integration using **OpenPyXL**.
 - Auto-create Excel file with default headers.
@@ -175,7 +156,7 @@
 
 ---
 
-## [0.8.0] - 2025-10-09
+## [0.1.0] - 2025-10-09
 ### 🚀 Initial Commit
 - Tkinter + ttkbootstrap structure.
 - Core Excel I/O and table integration.
