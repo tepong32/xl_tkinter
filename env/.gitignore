@@ -1,0 +1,61 @@
+# ==========================
+# Python / Tkinter App Ignore Rules
+# ==========================
+
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual environments
+.env/
+.venv/
+env/
+venv/
+
+# Distribution / build folders (for PyInstaller, cx_Freeze, etc.)
+build/ 
+# dist/ # allowed this specifically for this repo ;)
+*.spec
+
+# Installer logs
+pip-log.txt
+pip-delete-this-directory.txt
+
+# Unit test / coverage reports
+htmlcov/
+.tox/
+.nox/
+.coverage
+.cache
+.pytest_cache/
+coverage.xml
+
+# IDE settings
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# macOS / Windows metadata
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Logs and temp files
+*.log
+*.tmp
+*.bak
+
+# Excel autosaves or temporary files
+~$*.xlsx
+~$*.xls
+
+# Custom version manager & changelog tools
+version_manager.py.bak
+CHANGELOG_BACKUP.md
+version_info.json
+
+# Optional: ignore local test scripts or backups
+# test_*.py
+# *_backup.py
