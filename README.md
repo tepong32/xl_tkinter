@@ -1,8 +1,8 @@
 # 🧮 Dynamic Excel Data Entry App (Tkinter + ttkbootstrap)
 
-A modern **Excel-style data entry companion** built with **Tkinter** and **ttkbootstrap**, designed for people who want the familiarity of spreadsheets — with the validation, structure, and polish of a real app.  
+A modern **Excel-style data entry companion** built with **Tkinter** and **ttkbootstrap**, designed for users who prefer the familiarity of spreadsheets — with the reliability, structure, and validation of a professional tool.
 
-> ✨ Perfect for office staff, students, and small-scale data collectors who work with Excel templates daily.
+> ✨ Ideal for office clerks, researchers, and small data teams handling recurring Excel templates.
 
 ---
 
@@ -10,61 +10,68 @@ A modern **Excel-style data entry companion** built with **Tkinter** and **ttkbo
 
 ### 🗂 Excel Integration
 - Opens and edits `.xlsx`, `.xlsm`, `.xlsb`, `.xls`, and `.ods` files  
-- Automatically converts non-`.xlsx` formats for safe editing  
-- Preserves headers and data types intelligently  
+- Automatically converts non-`.xlsx` formats for safe saving  
+- Preserves sheet headers and data structure intelligently  
+- Supports multiple sheets with a quick selector  
 
-### 💡 Smart Validation
-- Detects data types based on header names (`Date`, `Email`, `Amount`, etc.)  
-- Auto-formats numbers:
-  - `amount`, `price`, `rate`, `total`, `cost`, `balance` → rounded to **2 decimals**
-  - `qty`, `age`, `count`, `number` → treated as **integers**
-- Real-time input feedback (color + message per field)
-- Inline duplicate detection with **None / Warn / Strict** policies  
-- “Required” toggles per column for easy setup  
+### 💡 Adaptive Validation
+- Auto-detects column types via headers (`Date`, `Email`, `Amount`, etc.)
+- Built-in numeric formatting:
+  - `amount`, `price`, `total`, `rate`, `cost`, `balance` → **2 decimal rounding**
+  - `qty`, `age`, `count`, `number` → **integer rounding**
+- Inline validation feedback (color-coded + per-field message)
+- Header-based **duplicate control**:
+  - Choose between **None / Warn / Strict**
+- “Required” toggle for each column — simple and intuitive
+- Smart duplicate detection excludes original value during edits
 
 ### ⚙️ Excel-Like Workflow
-- Keyboard shortcuts for rapid entry:
-  - **Ctrl+O** → Open file  
-  - **Ctrl+S** / **Ctrl+Shift+S** → Save / Save As  
-  - **Ctrl+N** → Clear input fields  
-  - **Ctrl+D** → Duplicate selected row  
-  - **Ctrl+Shift+D** → Delete selected row  
-  - **Ctrl+Shift+I** → Insert blank row below selection  
-  - **F2** → Edit selected row  
-  - **Esc** → Cancel edit / Reset to add mode  
-  - **Ctrl+Q** → Quit the app  
-- Auto-increment for ID-like fields (`ID001 → ID002`, `Ref10 → Ref11`)
-- Visual row feedback (green for insert/duplicate, red for delete)
-- Auto-save option on Add/Edit/Delete
+- Fast keyboard shortcuts:
+  | Action | Shortcut |
+  |--------|-----------|
+  | Open file | Ctrl+O |
+  | Save / Save As | Ctrl+S / Ctrl+Shift+S |
+  | Clear input fields | Ctrl+N |
+  | Add row | Enter (on last field) |
+  | Edit selected row | F2 |
+  | Duplicate row | Ctrl+D |
+  | Delete row | Ctrl+Shift+D |
+  | Insert blank row | Ctrl+Shift+I |
+  | Cancel edit | Esc |
+  | Quit | Ctrl+Q |
+- Auto-increment IDs (`ID001 → ID002`, `Ref10 → Ref11`)
+- Visual feedback (green flash = added, red = deleted)
+- Optional **Auto-Save** for Add/Edit/Delete/Insert/Duplicate actions
 
 ### 🎨 Polished Interface
-- Built with **ttkbootstrap** for a clean modern look  
-- Theme toggle with all available ttkbootstrap themes (e.g. Cosmo, Darkly, Flatly, etc.)
-- Responsive layout with scrollable inputs  
-- Sheet selector for multi-sheet workbooks  
-- Status bar for real-time updates
+- Clean, responsive UI powered by **ttkbootstrap**
+- Dynamic theme selector (Cosmo, Darkly, Flatly, etc.)
+- Color-coded status bar with fade-out transitions
+- Built-in tooltip and hover effects
+- Scrollable input area for wide spreadsheets
+- Inline help system via `help.txt` (❓ Help button in toolbar)
 
 ---
 
 ## 🧠 How to Use
 
 1. **Prepare your Excel template**
-   - Row 1 should contain clear headers (e.g. `Name`, `Email`, `Amount`, `Date`)
-   - Each header determines its validation type automatically.
+   - First row should contain headers like `Name`, `Email`, `Amount`, `Date`.
+   - Headers determine field validation automatically.
 2. **Launch the app**
    ```bash
    python test.py
    ```
 3. **Open your Excel file**
-   - Choose *Yes* when prompted, or use **Ctrl+O**.
+   - Answer **Yes** on startup prompt or use **Ctrl+O**.
 4. **Enter or edit data**
-   - Use **Tab** or **Enter** to move through fields.
-   - Press **Enter** in the last field to add the row.
-   - Double-click a row to edit, then press **Enter** to save changes.
-5. **Save your work**
-   - Press **Ctrl+S** anytime, or enable **Auto-Save on Add/Edit/Delete**.
-6. **Navigate rows quickly**
-   - Duplicate or insert rows as needed using keyboard shortcuts.
+   - Use **Tab** / **Enter** to move between fields.
+   - **Enter** on last field → adds the row.
+   - Double-click a row to edit it, press **Enter** to save.
+5. **Save**
+   - Use **Ctrl+S** or enable **Auto-Save** in the toolbar.
+6. **Need help?**
+   - Click the ❓ **Help** button or check `help.txt`.
 
 ---
 
@@ -72,45 +79,45 @@ A modern **Excel-style data entry companion** built with **Tkinter** and **ttkbo
 
 | Task | Recommendation |
 |------|----------------|
-| Header naming | Use clear, descriptive names (e.g., “Amount”, “Email Address”, “Date of Birth”). |
-| Number formatting | Use “Amount”, “Total”, or “Price” for 2-decimal rounding; “Qty” or “Age” for integers. |
-| Duplicate control | Mark important ID fields as **Strict**, and optional notes as **None**. |
-| Required fields | Enable “Required” for any must-fill columns. |
-| Saving | Always save after major edits; use Auto-Save for safety. |
-| Backups | Keep a copy of your `.xlsx` before bulk edits. |
-| Themes | Switch themes anytime from the dropdown on the toolbar. |
+| **Headers** | Use descriptive names like “Amount”, “Email”, “Date of Birth”. |
+| **Numeric fields** | “Amount” and “Price” → decimal; “Qty” and “Age” → integer. |
+| **Duplicate control** | Set **Strict** for IDs; **Warn** for fields like name or email. |
+| **Required fields** | Mark essential data columns as Required. |
+| **Auto-Save** | Enable it for safer workflows. |
+| **Backup** | Keep a copy of your Excel before batch edits. |
+| **Themes** | Experiment with ttkbootstrap themes for better visibility. |
 
 ---
 
 ## 🧩 Requirements
 
-- Python 3.10+  
-- Install dependencies:
-  ```bash
-  pip install ttkbootstrap openpyxl pandas pyxlsb odfpy xlrd
-  ```
-- On Linux, make sure Tkinter matches your Python version:
-  ```bash
-  sudo apt-get install python3.11-tk
-  ```
+```bash
+pip install ttkbootstrap openpyxl pandas pyxlsb odfpy xlrd
+```
+
+Requires **Python 3.10+**  
+On Linux, ensure Tkinter is installed:
+```bash
+sudo apt-get install python3.11-tk
+```
 
 ---
 
 ## 🧾 Credits
 
-- **Theme** → [rdbende/Forest-ttk-theme](https://github.com/rdbende/Forest-ttk-theme)  
-- **Tutorial Reference** → [Tkinter + ttkbootstrap YouTube Guide](https://www.youtube.com/watch?v=8m4uDS_nyCk)  
-- Built with ❤️ using Python, ttkbootstrap, and openpyxl  
+- **UI/Theme** → ttkbootstrap by [israel-dryer](https://github.com/israel-dryer)
+- **Excel Engine** → openpyxl + pandas
+- **Design & Code** → Built with ❤️ by tEppy (2025)
 
 ---
 
 ## 📜 License
 
-This project is open for personal and educational use.  
-For commercial use or redistribution, please credit the author.
+Personal and educational use allowed.  
+Credit the author for commercial use or redistribution.
 
 ---
 
 ## 🧭 Version History
 
-See [`CHANGELOG.md`](./changelog.md) for full version details.
+See [`CHANGELOG.md`](./changelog.md) for full release notes.
