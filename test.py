@@ -337,7 +337,6 @@ class DynamicExcelApp:
         # Bind double-click editing
         self.tree.bind("<Double-1>", self.on_tree_double_click)
 
-
     # -----------------------
     # File and Sheet Handling
     # -----------------------
@@ -729,7 +728,6 @@ class DynamicExcelApp:
                  self.update_row_from_inputs()
         else:
             self.input_entries[idx + 1].focus_set()
-
 
     def _get_existing_column_data(self, col_index):
         """
@@ -1175,7 +1173,6 @@ class DynamicExcelApp:
         except Exception as e:
             messagebox.showerror("Error", f"Failed to delete row:\n{e}")
 
-
     def reset_to_add_mode(self):
         """Helper to switch back to the default 'Add Row' state."""
         self.clear_input_entries()
@@ -1213,7 +1210,6 @@ class DynamicExcelApp:
         except Exception as e:
             messagebox.showerror("Save error", f"Failed to save workbook:\n{e}")
             return False
-
 
     def save_file_as(self):
         filetypes = [("Excel files", "*.xlsx")]
