@@ -1,5 +1,9 @@
 # Changelog
 
+## [4.5.0] - 2025-10-22
+### 🚀 Added
+- bump
+
 ## [4.4.1] - 2025-10-21
 ### 🚀 Added
 - updated main and backup versions to current build
