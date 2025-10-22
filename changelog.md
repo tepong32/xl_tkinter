@@ -2,7 +2,14 @@
 
 ## [4.5.0] - 2025-10-22
 ### 🚀 Added
-- bump
+- Help Card reading from help.txt (scrollable, themed window)
+- ❓ Help button beside Theme selector with tooltip + hover
+
+### 🧠 Improved
+- Grouped Auto-Save, Theme, Help controls in right-aligned toolbar cluster
+- Introduced unified tooltip and hover behavior for all toolbar controls
+- Replaced old status bar with color-coded, right-aligned version featuring fade-out transitions
+- Minor styling cleanup and readiness for future Markdown help support
 
 ## [4.4.1] - 2025-10-21
 ### 🚀 Added
