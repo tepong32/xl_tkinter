@@ -15,7 +15,7 @@ from datetime import datetime, date
 import pandas as pd
 from openpyxl.utils.dataframe import dataframe_to_rows
 
-APP_TITLE = "Data Entry v2+ — Dynamic Excel Companion (with Validation)"
+APP_TITLE = "tEppy's Data Entry (Excel Companion with validation)"
 
 # --------------------------------------------
 # Universal Excel Loader
@@ -588,7 +588,8 @@ class DynamicExcelApp:
             # Entry and Error Label (existing logic)
             ent = tk.Entry(col_frame, width=20)
             ent.pack(side=tk.TOP, pady=(6, 0))
-            ent.bind("<Return>", lambda e, i=idx: self._on_enter_pressed(e, i)) 
+            ent.bind("<Return>", lambda e, i=idx: self._on_enter_pressed(e, i))
+            ent.bind("<Tab>", lambda e, i=idx: (self._on_enter_pressed(e, i), "break")[1])  # Excel-style tabbing, NOT LOOPING THRU RADIO BUTTONS
             self.input_entries.append(ent)
             
             error_var = tk.StringVar(value="")
@@ -1100,9 +1101,10 @@ class DynamicExcelApp:
         
         # Re-bind Enter key for Add mode
         for idx, entry in enumerate(self.input_entries):
-             entry.unbind("<Return>")
-             # Rebind the original logic (focus next or add row)
-             entry.bind("<Return>", lambda e, i=idx: self._on_enter_pressed(e, i)) 
+            entry.unbind("<Return>")
+            entry.unbind("<Tab>")
+            entry.bind("<Return>", lambda e, i=idx: self._on_enter_pressed(e, i))
+            entry.bind("<Tab>", lambda e, i=idx: (self._on_enter_pressed(e, i), "break")[1])
         
         self.mode = "add"
         self.editing_item = None

@@ -15,7 +15,7 @@ from datetime import datetime, date
 import pandas as pd
 from openpyxl.utils.dataframe import dataframe_to_rows
 
-APP_TITLE = "Data Entry v2+ — Dynamic Excel Companion (with Validation)"
+APP_TITLE = "tEppy's Data Entry Assistant (Excel Companion with validation)"
 
 # --------------------------------------------
 # Universal Excel Loader
