@@ -7,6 +7,7 @@
 
 import os
 import re
+import warnings
 import tkinter as tk
 from tkinter import ttk, filedialog, messagebox
 from ttkbootstrap import Window, Style
@@ -58,17 +59,44 @@ class ToolTip:
 # --------------------------------------------
 # Universal Excel Loader
 # --------------------------------------------
-def load_any_excel(path: str):
+def load_any_excel(path: str, app_instance=None):
     """
     Load Excel, binary, or ODS file into an openpyxl Workbook.
     Supports: .xlsx, .xlsm, .xlsb, .xls, .ods
     Returns an openpyxl Workbook instance.
+    Optionally takes `app_instance` (DynamicExcelApp) to show in-app popups.
     """
     ext = os.path.splitext(path)[1].lower()
     try:
         if ext in [".xlsx", ".xlsm"]:
-            # Native openpyxl handling
-            return load_workbook(path)
+            with warnings.catch_warnings(record=True) as w:
+                warnings.simplefilter("always")
+                wb = load_workbook(path, data_only=True)
+
+            # --- Actively detect embedded images ---
+            unsupported_formats = (".wmf", ".emf", ".tiff", ".bmp")
+            for ws in wb.worksheets:
+                for image in getattr(ws, "_images", []):
+                    if any(fmt in str(getattr(image, 'path', '')).lower() for fmt in unsupported_formats):
+                        if app_instance:
+                            app_instance._show_temp_warning(
+                                "⚠️ Workbook contains embedded images (e.g., WMF/EMF).\n"
+                                "Avoid opening sheets with images to prevent data loss.",
+                                5000
+                            )
+                        break
+            # --- Optional: still catch other openpyxl warnings ---
+            for warn in w:
+                msg = str(warn.message).lower()
+                if "data validation" in msg and app_instance:
+                    app_instance._show_temp_warning(
+                        "⚠️ Some Excel validations may not load correctly.\n"
+                        "Data is safe, but rules will be removed on save.",
+                        5000
+                    )
+                    break
+
+            return wb
 
         elif ext == ".xlsb":
             df = pd.read_excel(path, engine="pyxlsb")
@@ -82,7 +110,7 @@ def load_any_excel(path: str):
         else:
             raise ValueError(f"Unsupported file format: {ext}")
 
-        # Convert DataFrame to openpyxl Workbook
+        # --- Convert DataFrame to openpyxl Workbook for non-xlsx formats ---
         wb = Workbook()
         ws = wb.active
         for r in dataframe_to_rows(df, index=False, header=True):
@@ -91,7 +119,8 @@ def load_any_excel(path: str):
 
     except Exception as e:
         raise RuntimeError(f"Failed to load file ({ext}): {e}")
-    
+
+
 # -------------------------
 # Validation helpers
 # -------------------------
@@ -145,7 +174,6 @@ def normalize_numeric(value: str, fmt: str = "integer"):
             return num
 
 
-
 # -------------------------
 # Main app
 # -------------------------
@@ -167,6 +195,8 @@ class DynamicExcelApp:
 
         # Inferred validation rules per column: list of dicts
         self.validation_rules = []
+        # Reference for theming (bottom-frame needs this)
+        self.style = ttk.Style()
 
         # UI elements
         self._create_menu()
@@ -316,20 +346,165 @@ class DynamicExcelApp:
         self.inputs_inner.bind("<Configure>", lambda e: self.input_canvas.configure(scrollregion=self.input_canvas.bbox("all")))
 
     def _create_bottom_frame(self):
-        # bottom frame will contain the treeview of sheet data
+        """
+        Bottom section containing the Treeview and the header-based filter row (simplified layout).
+        """
         bottom_frame = ttk.Frame(self.root)
         bottom_frame.pack(side=tk.TOP, fill=tk.BOTH, expand=True, padx=10, pady=10)
 
-        self.tree = ttk.Treeview(bottom_frame, show="headings")
+        # --- Filter Row Frame (no canvas, just simple frame above tree) ---
+        self.filter_frame = ttk.Frame(bottom_frame)
+        self.filter_frame.pack(side=tk.TOP, fill=tk.X, pady=(0, 3))
+
+        # --- Treeview Frame ---
+        tree_frame = ttk.Frame(bottom_frame)
+        tree_frame.pack(side=tk.TOP, fill=tk.BOTH, expand=True)
+
+        self.tree = ttk.Treeview(tree_frame, show="headings")
         self.tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
 
-        vsb = ttk.Scrollbar(bottom_frame, orient="vertical", command=self.tree.yview)
+        vsb = ttk.Scrollbar(tree_frame, orient="vertical", command=self.tree.yview)
         vsb.pack(side=tk.LEFT, fill=tk.Y)
         self.tree.configure(yscrollcommand=vsb.set)
 
-        hsb = ttk.Scrollbar(bottom_frame, orient="horizontal", command=self.tree.xview)
+        hsb = ttk.Scrollbar(tree_frame, orient="horizontal", command=self.tree.xview)
         hsb.pack(side=tk.BOTTOM, fill=tk.X)
         self.tree.configure(xscrollcommand=hsb.set)
+
+        # --- Data caches ---
+        self.all_rows = []
+        self.filter_entries = []
+        self.column_ids = []
+
+        # When Treeview resizes, adjust entry widths
+        self.tree.bind("<Configure>", lambda e: self._adjust_filter_widths())
+        self.tree.bind("<ButtonRelease-1>", lambda e: self._adjust_filter_widths())  # for resize drag
+
+    def _on_tree_scroll(self, *args):
+        """
+        Sync horizontal scroll between Treeview and filter canvas.
+        """
+        self.tree.xview(*args)
+        self.filter_canvas.xview(*args)
+        self._sync_filter_positions()
+
+    def _create_filter_row(self):
+        """
+        Creates one filter entry per column directly above the Treeview.
+        """
+        # Clear previous filters
+        for w in self.filter_frame.winfo_children():
+            w.destroy()
+        self.filter_entries.clear()
+        self.column_ids = list(self.tree["columns"])
+
+        if not self.column_ids:
+            return
+
+        # Create one Entry per column
+        for col_id in self.column_ids:
+            entry = ttk.Entry(self.filter_frame)
+            entry.pack(side=tk.LEFT, padx=1, fill=tk.X, expand=True)
+            entry.insert(0, "")
+            entry.bind("<KeyRelease>", lambda e: self._apply_filters())
+            ToolTip(entry, f"Filter '{self.tree.heading(col_id, 'text')}'")
+            self.filter_entries.append(entry)
+
+        self.root.after(100, self._adjust_filter_widths)
+
+    def _adjust_filter_widths(self):
+        """
+        Match filter entry widths to Treeview column widths.
+        """
+        if not self.filter_entries or not self.column_ids:
+            return
+
+        # Get total width of the tree
+        total_width = sum(int(self.tree.column(col, "width")) for col in self.column_ids)
+        self.filter_frame.update_idletasks()
+
+        for i, col_id in enumerate(self.column_ids):
+            try:
+                width = int(self.tree.column(col_id, "width"))
+            except tk.TclError:
+                width = 100
+            self.filter_entries[i].config(width=max(8, width // 10))
+
+    def _sync_filter_positions(self):
+        """
+        Align filter entries under each Treeview column, using cumulative column widths.
+        Works even when no data rows exist.
+        """
+        if not self.filter_entries or not self.column_ids:
+            return
+
+        # Ensure Canvas is visible and ready
+        self.filter_canvas.update_idletasks()
+
+        x_offset = 0
+        total_width = 0
+
+        for i, col_id in enumerate(self.column_ids):
+            try:
+                width = int(self.tree.column(col_id, 'width'))
+            except tk.TclError:
+                width = 120  # fallback width
+
+            entry = self.filter_entries[i]
+            entry.place(x=x_offset, y=2, width=width, height=26)
+            x_offset += width
+            total_width += width
+
+        # Adjust scroll region so entries can be seen/scrolled properly
+        self.filter_canvas.configure(scrollregion=(0, 0, total_width, 30))
+        self.filter_inner.update_idletasks()
+        self.filter_canvas.update_idletasks()
+
+    def _apply_filters(self):
+        """
+        Simple per-column substring filtering.
+        """
+        if not self.all_rows:
+            return
+
+        filters = [f.get().strip().lower() for f in self.filter_entries]
+        if all(f == "" for f in filters):
+            self._reload_tree_from_cache()
+            return
+
+        filtered = []
+        for row in self.all_rows:
+            if all(
+                (f in str(row[i]).lower() if f else True)
+                for i, f in enumerate(filters)
+            ):
+                filtered.append(row)
+
+        self._reload_tree_from_cache(filtered)
+
+    def _reload_tree_from_cache(self, rows=None):
+        """
+        Reload Treeview data from cache.
+        """
+        self.tree.delete(*self.tree.get_children())
+        display_rows = rows if rows is not None else self.all_rows
+
+        for row in display_rows:
+            row_extended = list(row) + [""] * (len(self.headers) - len(row))
+            self.tree.insert("", tk.END, values=row_extended)
+
+    def _clear_filters(self):
+        """
+        Clear all filters and restore full dataset view.
+        """
+        if not hasattr(self, "filter_entries"):
+            return
+
+        for entry in self.filter_entries:
+            entry.delete(0, tk.END)
+
+        self._reload_tree_from_cache()
+        self._update_status("Filters cleared. Showing all data.", "success")
 
     def _bind_events(self):
         # Save prompt on close
@@ -469,46 +644,59 @@ class DynamicExcelApp:
         self._load_active_sheet()
 
     def _load_active_sheet(self):
-        """Read headers and rows from active sheet, rebuild inputs and treeview."""
+        """Read headers and rows from active sheet, rebuild inputs, treeview, and filters."""
         if not self.workbook or not self.active_sheet_name:
             return
 
         sheet = self.workbook[self.active_sheet_name]
-        # Read headers: find first non-empty row (usually row 1). We treat the very first row with any non-empty cells as headers.
+
+        # --- Load headers (same logic as before) ---
         headers = []
         header_row_idx = None
-        for r in sheet.iter_rows(min_row=1, max_row=5):  # check first few rows for header row
+        for r in sheet.iter_rows(min_row=1, max_row=5):
             values = [cell.value for cell in r]
             if any(v is not None and str(v).strip() != "" for v in values):
                 header_row_idx = r[0].row
-                headers = []
-                for cell in r:
-                    # Stop at trailing blank cells? We'll keep blanks but give them fallback names
-                    val = cell.value
-                    headers.append(str(val).strip() if val is not None and str(val).strip() != "" else None)
+                headers = [
+                    str(cell.value).strip() if cell.value is not None and str(cell.value).strip() != "" else None
+                    for cell in r
+                ]
                 break
 
         if not headers:
-            # If still no headers, create default Column1..N based on max_column
             max_col = sheet.max_column or 1
             headers = [None] * max_col
             header_row_idx = 1
 
-        # Normalize headers: fill None with "Column X"
-        normalized = []
-        for i, h in enumerate(headers):
-            if h:
-                normalized.append(h)
-            else:
-                normalized.append(f"Column {i+1}")
-        self.headers = normalized
+        self.headers = [h if h else f"Column {i+1}" for i, h in enumerate(headers)]
 
-        # Infer validation rules
+        # Infer validation rules and build inputs
         self.validation_rules = self._infer_validation_rules(self.headers)
-
-        # Build inputs and treeview
         self._build_input_fields(self.headers)
-        self._load_treeview_rows(sheet, header_row_idx)
+
+        # --- Load data rows into Treeview + cache ---
+        self._clear_treeview()
+        cols = [f"c{i}" for i in range(len(self.headers))]
+        self.tree["columns"] = cols
+        for i, h in enumerate(self.headers):
+            self.tree.heading(cols[i], text=h, anchor=tk.W)
+            self.tree.column(cols[i], width=160, anchor=tk.W)
+
+        start_row = header_row_idx + 1
+        rows = []
+        for r in sheet.iter_rows(min_row=start_row, max_row=sheet.max_row, max_col=len(self.headers)):
+            rowvals = [cell.value if cell.value is not None else "" for cell in r]
+            if all(v == "" or v is None for v in rowvals):
+                continue
+            rows.append(rowvals)
+
+        self.all_rows = rows  # cache for filtering
+        for row in rows:
+            row_extended = list(row) + [""] * (len(self.headers) - len(row))
+            self.tree.insert("", tk.END, values=row_extended)
+
+        # --- Finally: build the filter row now that we know the headers ---
+        self._create_filter_row()
 
     def _duplicate_selected_row(self):
         """Duplicate the currently selected row (inserted right below it), auto-incrementing ID-like fields."""
@@ -652,57 +840,57 @@ class DynamicExcelApp:
         self.input_entries.clear()
 
     def _build_input_fields(self, headers):
-        """Create a horizontal layout of label+entry, plus QoL controls for each header."""
+        """
+        Create horizontal layout of label+entry with QoL validation controls per header.
+        (Updated duplicate policy labels for clarity)
+        """
         self._clear_inputs_area()
 
         for idx, header in enumerate(headers):
             rule = self.validation_rules[idx]
-            
+
             col_frame = ttk.Frame(self.inputs_inner)
             col_frame.grid(row=0, column=idx, padx=6, pady=4)
-            
-            # --- Label improvement: Show current state (R/U/W) ---
-            # This is complex to do dynamically, so we'll simplify the label and rely on the controls below.
+
             lbl = ttk.Label(col_frame, text=header, width=20, anchor="center")
             lbl.pack(side=tk.TOP, fill=tk.X)
-            
-            # Entry and Error Label (existing logic)
+
             ent = tk.Entry(col_frame, width=20)
             ent.pack(side=tk.TOP, pady=(6, 0))
             ent.bind("<Return>", lambda e, i=idx: self._on_enter_pressed(e, i))
-            ent.bind("<Tab>", lambda e, i=idx: (self._on_enter_pressed(e, i), "break")[1])  # Excel-style tabbing, NOT LOOPING THRU RADIO BUTTONS
+            ent.bind("<Tab>", lambda e, i=idx: (self._on_enter_pressed(e, i), "break")[1])
             self.input_entries.append(ent)
-            
+
             error_var = tk.StringVar(value="")
             error_lbl = ttk.Label(col_frame, textvariable=error_var, foreground="red", anchor="center")
             error_lbl.pack(side=tk.TOP, fill=tk.X)
-            ent.error_var = error_var 
-            
-            # --- NEW QoL Controls Frame ---
+            ent.error_var = error_var
+
+            # QoL Controls Frame
             control_frame = ttk.Frame(col_frame)
             control_frame.pack(side=tk.TOP, fill=tk.X, pady=(5, 0))
-            
-            # 1. Required Checkbox
-            req_chk = ttk.Checkbutton(control_frame, text="Required", variable=rule['required_var'], 
-                                      command=lambda r=rule: self._update_validation_state(r))
+
+            # Required Checkbox
+            req_chk = ttk.Checkbutton(
+                control_frame,
+                text="Required",
+                variable=rule['required_var'],
+                command=lambda r=rule: self._update_validation_state(r)
+            )
             req_chk.pack(anchor=tk.W)
 
-            # 2. Duplicate Radio Buttons
-            dup_lbl = ttk.Label(control_frame, text="Duplicate Policy:", style="TLabel")
+            # Duplicate Policy Label
+            dup_lbl = ttk.Label(control_frame, text="Duplicate Policy:")
             dup_lbl.pack(anchor=tk.W, pady=(2, 0))
-            
-            # Radio button for None
+
+            # Duplicate Options
             ttk.Radiobutton(control_frame, text="None", variable=rule['duplicate_var'], value="none",
                             command=lambda r=rule: self._update_validation_state(r)).pack(anchor=tk.W, padx=10)
-            
-            # Radio button for Warn
-            ttk.Radiobutton(control_frame, text="Warn", variable=rule['duplicate_var'], value="warn",
+            ttk.Radiobutton(control_frame, text="Warn (Allow Duplicates)", variable=rule['duplicate_var'], value="warn",
                             command=lambda r=rule: self._update_validation_state(r)).pack(anchor=tk.W, padx=10)
-                            
-            # Radio button for Strict
-            ttk.Radiobutton(control_frame, text="Strict", variable=rule['duplicate_var'], value="strict",
+            ttk.Radiobutton(control_frame, text="No Duplicates (Strict)", variable=rule['duplicate_var'], value="strict",
                             command=lambda r=rule: self._update_validation_state(r)).pack(anchor=tk.W, padx=10)
-            
+
         self.root.after(100, lambda: self.input_canvas.configure(scrollregion=self.input_canvas.bbox("all")))
         self.reset_to_add_mode()
 
@@ -1267,6 +1455,37 @@ class DynamicExcelApp:
         # --- Fade-out after duration ---
         if duration > 0:
             self.root.after(duration, lambda: self._fade_status())
+
+    def _show_temp_warning(self, message, duration=5000):
+        """
+        Display a non-interactive popup warning that auto-closes after a few seconds.
+        """
+        popup = tk.Toplevel(self.root)
+        popup.title("⚠️ Warning")
+        popup.geometry("400x100+{}+{}".format(self.root.winfo_rootx() + 150, self.root.winfo_rooty() + 100))
+        popup.configure(bg="#fff4e5")  # light amber tone
+        popup.attributes("-topmost", True)
+        popup.resizable(False, False)
+
+        # Remove title bar buttons (platform-dependent)
+        try:
+            popup.overrideredirect(True)
+        except Exception:
+            pass
+
+        msg = ttk.Label(
+            popup,
+            text=message,
+            wraplength=380,
+            justify="center",
+            foreground="#8a6d3b",
+            background="#fff4e5",
+            font=("Segoe UI", 10, "bold")
+        )
+        msg.pack(expand=True, fill=tk.BOTH, padx=10, pady=10)
+
+        # Auto-destroy after duration (default: 5 seconds)
+        popup.after(duration, popup.destroy)
 
     def _fade_status(self, steps=10, interval=50):
         """Fade the status label background color gradually back to neutral."""
