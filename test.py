@@ -1,12 +1,13 @@
 # data_entry_v2_dynamic_excel_with_validation.py
-# v2+: Dynamic Excel-driven Tkinter data-entry app with adaptive validation
+# v3.3.0 — Dynamic Excel-driven Tkinter data-entry app with adaptive validation
 #
-# Save as: data_entry_v2_dynamic_excel_with_validation.py
-# Requirements:
-# pip install ttkbootstrap openpyxl
+# Compatible with PyInstaller --onefile packaging
+# Example:
+#   pyinstaller --noconfirm --onefile --windowed --name="tEppysDataEntryAssistant" --add-data "help.txt;." --add-data "sample_template.xlsx;." --add-data "VERSION;." test.py
 
 import os
 import re
+import sys      # ✅ added for PyInstaller resource path handling
 import warnings
 import tkinter as tk
 from tkinter import ttk, filedialog, messagebox
@@ -17,6 +18,17 @@ import pandas as pd
 from openpyxl.utils.dataframe import dataframe_to_rows
 
 APP_TITLE = "tEppy's Data Entry (Excel Companion with validation)"
+
+# =========================================================
+# ✅ PyInstaller-compatible resource loader
+# =========================================================
+def resource_path(relative_path):
+    """Get absolute path to resource (works for dev and PyInstaller)."""
+    try:
+        base_path = sys._MEIPASS  # PyInstaller temporary dir
+    except Exception:
+        base_path = os.path.abspath(".")
+    return os.path.join(base_path, relative_path)
 
 # -------------------------
 # Tooltip Helper
@@ -1531,24 +1543,33 @@ class DynamicExcelApp:
 
     def _show_help(self):
         """Display help instructions from help.txt in a floating card-like window."""
-        help_path = os.path.join(os.path.dirname(__file__), "help.txt")
+        # ✅ Now uses resource_path() to locate bundled help file
+        help_path = resource_path("help.txt")
+
         if not os.path.exists(help_path):
-            messagebox.showinfo("Help File Missing", "No 'help.txt' file found in the app directory.")
+            messagebox.showinfo(
+                "Help File Missing",
+                "No 'help.txt' file found in the app directory or bundled resources."
+            )
             return
 
         # Read file content
-        with open(help_path, "r", encoding="utf-8") as f:
-            content = f.read()
+        try:
+            with open(help_path, "r", encoding="utf-8") as f:
+                content = f.read()
+        except Exception as e:
+            messagebox.showerror("Error", f"Failed to read help file:\n{e}")
+            return
 
         # --- Create floating window ---
         win = tk.Toplevel(self.root)
         win.title("Help & Instructions")
         win.geometry("700x500")
-        win.transient(self.root)  # stays above main
+        win.transient(self.root)
         win.resizable(True, True)
         win.configure(bg="#f8f9fa")
 
-        # --- Card Frame (visual styling) ---
+        # --- Card Frame ---
         card = ttk.Frame(win, padding=20, relief="raised", borderwidth=2)
         card.pack(expand=True, fill="both", padx=16, pady=16)
 
@@ -1572,11 +1593,9 @@ class DynamicExcelApp:
         scroll.pack(side=tk.RIGHT, fill=tk.Y)
         text_widget.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
 
-        # Close button
         close_btn = ttk.Button(card, text="Close", command=win.destroy, style="secondary.TButton")
         close_btn.pack(pady=(10, 0), anchor="e")
 
-        # Subtle shadow effect (optional aesthetic)
         try:
             win.attributes("-alpha", 0.98)
             win.lift()
@@ -1604,7 +1623,6 @@ def main():
     app_root = Window(title=APP_TITLE, themename="cosmo")
     app = DynamicExcelApp(app_root)
     app_root.mainloop()
-
 
 if __name__ == "__main__":
     main()
