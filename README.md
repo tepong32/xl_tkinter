@@ -107,7 +107,7 @@ sudo apt-get install python3.11-tk
 
 - **UI/Theme** → ttkbootstrap by [israel-dryer](https://github.com/israel-dryer)
 - **Excel Engine** → openpyxl + pandas
-- **Design & Code** → Built with ❤️ by tEppy (2025)
+- **Design & Code** → Built with ❤️ by [tEppy] (https://github.com/israel-dryer) (2025)
 
 ---
 
