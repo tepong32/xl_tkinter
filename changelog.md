@@ -1,8 +1,21 @@
 # Changelog
 
 ## [3.4.0] - 2025-11-03
-### 🚀 Added
-- --bump
+### 🚀 Added per-file user preferences (theme, autosave, validation policies)
+✨ Added
+- Introduced .prefs.json system for each Excel file.
+- Preferences store theme, auto-save state, and column-level validation rules.
+- Auto-loads and saves preferences seamlessly per workbook.
+- Fully compatible with PyInstaller executables.
+
+💡 Improved
+- Graceful handling of renamed or missing headers (fallback to inferred defaults).
+- Cleaner status updates and better UX consistency during save operations.
+
+🧠 Technical
+- Added _save_user_prefs() and _load_user_prefs() methods.
+- Global `import json` fix for preferences serialization.
+- Preferences stored beside Excel files (not inside app bundle).
 
 ## [3.3.0] - 2025-10-22
 ### 🚀 Added
