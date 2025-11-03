@@ -1,12 +1,14 @@
 # data_entry_v2_dynamic_excel_with_validation.py
-# v2+: Dynamic Excel-driven Tkinter data-entry app with adaptive validation
+# v3.3.0 — Dynamic Excel-driven Tkinter data-entry app with adaptive validation
 #
-# Save as: data_entry_v2_dynamic_excel_with_validation.py
-# Requirements:
-# pip install ttkbootstrap openpyxl
+# Compatible with PyInstaller --onefile packaging
+# Example:
+#   pyinstaller --noconfirm --onefile --windowed --name="tEppysDataEntryAssistant" --add-data "help.txt;." --add-data "sample_template.xlsx;." --add-data "VERSION;." test.py
 
+import json
 import os
 import re
+import sys      # ✅ added for PyInstaller resource path handling
 import warnings
 import tkinter as tk
 from tkinter import ttk, filedialog, messagebox
@@ -17,6 +19,17 @@ import pandas as pd
 from openpyxl.utils.dataframe import dataframe_to_rows
 
 APP_TITLE = "tEppy's Data Entry (Excel Companion with validation)"
+
+# =========================================================
+# ✅ PyInstaller-compatible resource loader
+# =========================================================
+def resource_path(relative_path):
+    """Get absolute path to resource (works for dev and PyInstaller)."""
+    try:
+        base_path = sys._MEIPASS  # PyInstaller temporary dir
+    except Exception:
+        base_path = os.path.abspath(".")
+    return os.path.join(base_path, relative_path)
 
 # -------------------------
 # Tooltip Helper
@@ -697,6 +710,7 @@ class DynamicExcelApp:
 
         # --- Finally: build the filter row now that we know the headers ---
         self._create_filter_row()
+        self._load_user_prefs()
 
     def _duplicate_selected_row(self):
         """Duplicate the currently selected row (inserted right below it), auto-incrementing ID-like fields."""
@@ -1394,6 +1408,7 @@ class DynamicExcelApp:
             self.workbook.save(self.filepath)
             self.unsaved_changes = False
             self._update_status(f"Saved: {os.path.basename(self.filepath)}", "success")
+            self._save_user_prefs()
             return True
         except Exception as e:
             messagebox.showerror("Save error", f"Failed to save workbook:\n{e}")
@@ -1409,6 +1424,7 @@ class DynamicExcelApp:
             self.workbook.save(self.filepath)
             self.unsaved_changes = False
             self._update_status(f"Saved as: {os.path.basename(self.filepath)}", "success")
+            self._save_user_prefs()
             return True
         except Exception as e:
             messagebox.showerror("Save error", f"Failed to save workbook:\n{e}")
@@ -1531,24 +1547,33 @@ class DynamicExcelApp:
 
     def _show_help(self):
         """Display help instructions from help.txt in a floating card-like window."""
-        help_path = os.path.join(os.path.dirname(__file__), "help.txt")
+        # ✅ Now uses resource_path() to locate bundled help file
+        help_path = resource_path("help.txt")
+
         if not os.path.exists(help_path):
-            messagebox.showinfo("Help File Missing", "No 'help.txt' file found in the app directory.")
+            messagebox.showinfo(
+                "Help File Missing",
+                "No 'help.txt' file found in the app directory or bundled resources."
+            )
             return
 
         # Read file content
-        with open(help_path, "r", encoding="utf-8") as f:
-            content = f.read()
+        try:
+            with open(help_path, "r", encoding="utf-8") as f:
+                content = f.read()
+        except Exception as e:
+            messagebox.showerror("Error", f"Failed to read help file:\n{e}")
+            return
 
         # --- Create floating window ---
         win = tk.Toplevel(self.root)
         win.title("Help & Instructions")
         win.geometry("700x500")
-        win.transient(self.root)  # stays above main
+        win.transient(self.root)
         win.resizable(True, True)
         win.configure(bg="#f8f9fa")
 
-        # --- Card Frame (visual styling) ---
+        # --- Card Frame ---
         card = ttk.Frame(win, padding=20, relief="raised", borderwidth=2)
         card.pack(expand=True, fill="both", padx=16, pady=16)
 
@@ -1572,11 +1597,9 @@ class DynamicExcelApp:
         scroll.pack(side=tk.RIGHT, fill=tk.Y)
         text_widget.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
 
-        # Close button
         close_btn = ttk.Button(card, text="Close", command=win.destroy, style="secondary.TButton")
         close_btn.pack(pady=(10, 0), anchor="e")
 
-        # Subtle shadow effect (optional aesthetic)
         try:
             win.attributes("-alpha", 0.98)
             win.lift()
@@ -1593,10 +1616,87 @@ class DynamicExcelApp:
                     return
 
         try:
+            self._save_user_prefs()
             self.root.destroy()
         except Exception:
             os._exit(0)
-            
+
+    # =========================================================
+    # 🧠 User Preferences (per-file persistent settings)
+    # =========================================================
+    # import json # imported globally above
+
+    def _get_prefs_path(self):
+        """Return .prefs.json path associated with the current Excel file."""
+        if not self.filepath:
+            return None
+        return self.filepath + ".prefs.json"
+
+    def _load_user_prefs(self):
+        """Load per-file user preferences (theme, auto-save, column validation states)."""
+        prefs_path = self._get_prefs_path()
+        if not prefs_path or not os.path.exists(prefs_path):
+            return
+
+        try:
+            with open(prefs_path, "r", encoding="utf-8") as f:
+                prefs = json.load(f)
+
+            # --- Apply preferences ---
+            if "theme" in prefs:
+                try:
+                    self.theme_combo.set(prefs["theme"])
+                    Style().theme_use(prefs["theme"])
+                except Exception:
+                    self._update_status(f"Theme '{prefs['theme']}' not available. Using default.", "warning")
+
+            if "auto_save" in prefs:
+                self.auto_save_var.set(prefs["auto_save"])
+
+            if "columns" in prefs:
+                for rule in self.validation_rules:
+                    name = rule["name"]
+                    if name in prefs["columns"]:
+                        col_prefs = prefs["columns"][name]
+                        rule["required_var"].set(col_prefs.get("required", rule["required"]))
+                        rule["duplicate_var"].set(col_prefs.get("duplicate", rule["duplicate_policy"]))
+                        # Ensure internal state stays consistent
+                        self._update_validation_state(rule)
+
+            self._update_status("✅ Preferences loaded for this file.", "success")
+
+        except Exception as e:
+            self._update_status(f"Failed to load preferences: {e}", "error")
+
+    def _save_user_prefs(self):
+        """Save per-file user preferences alongside the workbook."""
+        prefs_path = self._get_prefs_path()
+        if not prefs_path:
+            return
+
+        try:
+            prefs = {
+                "theme": self.theme_combo.get(),
+                "auto_save": self.auto_save_var.get(),
+                "columns": {
+                    rule["name"]: {
+                        "required": rule["required_var"].get(),
+                        "duplicate": rule["duplicate_var"].get(),
+                    }
+                    for rule in self.validation_rules
+                },
+            }
+
+            with open(prefs_path, "w", encoding="utf-8") as f:
+                json.dump(prefs, f, indent=2)
+
+            self._update_status("💾 Preferences saved for this file.", "success")
+
+        except Exception as e:
+            self._update_status(f"Failed to save preferences: {e}", "error")
+
+
+                
 # -------------------------
 # Application Entry Point
 # -------------------------
@@ -1604,7 +1704,6 @@ def main():
     app_root = Window(title=APP_TITLE, themename="cosmo")
     app = DynamicExcelApp(app_root)
     app_root.mainloop()
-
 
 if __name__ == "__main__":
     main()
