@@ -5,6 +5,7 @@
 # Example:
 #   pyinstaller --noconfirm --onefile --windowed --name="tEppysDataEntryAssistant" --add-data "help.txt;." --add-data "sample_template.xlsx;." --add-data "VERSION;." test.py
 
+import json
 import os
 import re
 import sys      # ✅ added for PyInstaller resource path handling
@@ -709,6 +710,7 @@ class DynamicExcelApp:
 
         # --- Finally: build the filter row now that we know the headers ---
         self._create_filter_row()
+        self._load_user_prefs()
 
     def _duplicate_selected_row(self):
         """Duplicate the currently selected row (inserted right below it), auto-incrementing ID-like fields."""
@@ -1406,6 +1408,7 @@ class DynamicExcelApp:
             self.workbook.save(self.filepath)
             self.unsaved_changes = False
             self._update_status(f"Saved: {os.path.basename(self.filepath)}", "success")
+            self._save_user_prefs()
             return True
         except Exception as e:
             messagebox.showerror("Save error", f"Failed to save workbook:\n{e}")
@@ -1421,6 +1424,7 @@ class DynamicExcelApp:
             self.workbook.save(self.filepath)
             self.unsaved_changes = False
             self._update_status(f"Saved as: {os.path.basename(self.filepath)}", "success")
+            self._save_user_prefs()
             return True
         except Exception as e:
             messagebox.showerror("Save error", f"Failed to save workbook:\n{e}")
@@ -1612,10 +1616,87 @@ class DynamicExcelApp:
                     return
 
         try:
+            self._save_user_prefs()
             self.root.destroy()
         except Exception:
             os._exit(0)
-            
+
+    # =========================================================
+    # 🧠 User Preferences (per-file persistent settings)
+    # =========================================================
+    # import json # imported globally above
+
+    def _get_prefs_path(self):
+        """Return .prefs.json path associated with the current Excel file."""
+        if not self.filepath:
+            return None
+        return self.filepath + ".prefs.json"
+
+    def _load_user_prefs(self):
+        """Load per-file user preferences (theme, auto-save, column validation states)."""
+        prefs_path = self._get_prefs_path()
+        if not prefs_path or not os.path.exists(prefs_path):
+            return
+
+        try:
+            with open(prefs_path, "r", encoding="utf-8") as f:
+                prefs = json.load(f)
+
+            # --- Apply preferences ---
+            if "theme" in prefs:
+                try:
+                    self.theme_combo.set(prefs["theme"])
+                    Style().theme_use(prefs["theme"])
+                except Exception:
+                    self._update_status(f"Theme '{prefs['theme']}' not available. Using default.", "warning")
+
+            if "auto_save" in prefs:
+                self.auto_save_var.set(prefs["auto_save"])
+
+            if "columns" in prefs:
+                for rule in self.validation_rules:
+                    name = rule["name"]
+                    if name in prefs["columns"]:
+                        col_prefs = prefs["columns"][name]
+                        rule["required_var"].set(col_prefs.get("required", rule["required"]))
+                        rule["duplicate_var"].set(col_prefs.get("duplicate", rule["duplicate_policy"]))
+                        # Ensure internal state stays consistent
+                        self._update_validation_state(rule)
+
+            self._update_status("✅ Preferences loaded for this file.", "success")
+
+        except Exception as e:
+            self._update_status(f"Failed to load preferences: {e}", "error")
+
+    def _save_user_prefs(self):
+        """Save per-file user preferences alongside the workbook."""
+        prefs_path = self._get_prefs_path()
+        if not prefs_path:
+            return
+
+        try:
+            prefs = {
+                "theme": self.theme_combo.get(),
+                "auto_save": self.auto_save_var.get(),
+                "columns": {
+                    rule["name"]: {
+                        "required": rule["required_var"].get(),
+                        "duplicate": rule["duplicate_var"].get(),
+                    }
+                    for rule in self.validation_rules
+                },
+            }
+
+            with open(prefs_path, "w", encoding="utf-8") as f:
+                json.dump(prefs, f, indent=2)
+
+            self._update_status("💾 Preferences saved for this file.", "success")
+
+        except Exception as e:
+            self._update_status(f"Failed to save preferences: {e}", "error")
+
+
+                
 # -------------------------
 # Application Entry Point
 # -------------------------

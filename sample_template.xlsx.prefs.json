@@ -1,0 +1,26 @@
+{
+  "theme": "solar",
+  "auto_save": false,
+  "columns": {
+    "Name [warn]": {
+      "required": true,
+      "duplicate": "none"
+    },
+    "Age": {
+      "required": true,
+      "duplicate": "none"
+    },
+    "Subscription": {
+      "required": true,
+      "duplicate": "none"
+    },
+    "Employment": {
+      "required": true,
+      "duplicate": "none"
+    },
+    "Date": {
+      "required": true,
+      "duplicate": "none"
+    }
+  }
+}

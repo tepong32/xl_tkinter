@@ -1,5 +1,9 @@
 # Changelog
 
+## [3.4.0] - 2025-11-03
+### 🚀 Added
+- --bump
+
 ## [3.3.0] - 2025-10-22
 ### 🚀 Added
 - **QoL Validation Controls**
