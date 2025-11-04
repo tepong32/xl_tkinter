@@ -14,7 +14,7 @@ env/
 venv/
 
 # Distribution / build folders (for PyInstaller, cx_Freeze, etc.)
-build/ 
+.build/ 
 # dist/ # allowed this specifically for this repo ;)
 *.spec
 
