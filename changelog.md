@@ -2,6 +2,28 @@
 
 ## [3.4.1] - 2025-11-04
 ### 🚀 Added
+- **Multi-Sheet Preferences Support**
+  - Each sheet in a workbook now keeps its own validation and duplicate-policy settings.
+  - Preferences JSON structure now includes a `sheets` block:
+    ```json
+    {
+      "theme": "darkly",
+      "auto_save": true,
+      "sheets": {
+        "Sheet1": { "columns": { "Name": {...} } },
+        "Sheet2": { "columns": { "Item": {...} } }
+      }
+    }
+    ```
+  - Automatically loads the correct sheet’s preferences when switching or reopening a workbook.
+
+### 💡 Improved
+- Prevents one sheet’s preferences from overwriting another’s.
+- Backward-compatible with old `.prefs.json` files — legacy ones are still read normally.
+
+### 🧠 Technical
+- Updated `_save_user_prefs()` and `_load_user_prefs()` to track preferences per sheet.
+- Retains global settings (`theme`, `auto_save`) while isolating column rules per sheet.
 ## [3.4.1] - 2025-11-03
 ### 🚀 Added
 - **Multi-Sheet Preferences Support**
