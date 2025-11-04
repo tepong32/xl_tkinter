@@ -1633,7 +1633,7 @@ class DynamicExcelApp:
         return self.filepath + ".prefs.json"
 
     def _load_user_prefs(self):
-        """Load per-file user preferences (theme, auto-save, column validation states)."""
+        """Load per-file user preferences (sheet-aware)."""
         prefs_path = self._get_prefs_path()
         if not prefs_path or not os.path.exists(prefs_path):
             return
@@ -1642,58 +1642,72 @@ class DynamicExcelApp:
             with open(prefs_path, "r", encoding="utf-8") as f:
                 prefs = json.load(f)
 
-            # --- Apply preferences ---
+            # --- Apply global settings ---
             if "theme" in prefs:
                 try:
                     self.theme_combo.set(prefs["theme"])
                     Style().theme_use(prefs["theme"])
                 except Exception:
-                    self._update_status(f"Theme '{prefs['theme']}' not available. Using default.", "warning")
+                    self._update_status(f"Theme '{prefs['theme']}' not available.", "warning")
 
             if "auto_save" in prefs:
                 self.auto_save_var.set(prefs["auto_save"])
 
-            if "columns" in prefs:
+            # --- Apply per-sheet preferences ---
+            sheet_name = self.active_sheet
+            sheet_prefs = prefs.get("sheets", {}).get(sheet_name, {})
+
+            if "columns" in sheet_prefs:
                 for rule in self.validation_rules:
                     name = rule["name"]
-                    if name in prefs["columns"]:
-                        col_prefs = prefs["columns"][name]
+                    if name in sheet_prefs["columns"]:
+                        col_prefs = sheet_prefs["columns"][name]
                         rule["required_var"].set(col_prefs.get("required", rule["required"]))
                         rule["duplicate_var"].set(col_prefs.get("duplicate", rule["duplicate_policy"]))
-                        # Ensure internal state stays consistent
                         self._update_validation_state(rule)
 
-            self._update_status("✅ Preferences loaded for this file.", "success")
+            self._update_status(f"✅ Preferences loaded for sheet '{sheet_name}'.", "success")
 
         except Exception as e:
             self._update_status(f"Failed to load preferences: {e}", "error")
 
+
     def _save_user_prefs(self):
-        """Save per-file user preferences alongside the workbook."""
+        """Save per-file user preferences with per-sheet support."""
         prefs_path = self._get_prefs_path()
         if not prefs_path:
             return
 
         try:
-            prefs = {
-                "theme": self.theme_combo.get(),
-                "auto_save": self.auto_save_var.get(),
+            # Load existing prefs if any (to preserve other sheets)
+            prefs = {}
+            if os.path.exists(prefs_path):
+                with open(prefs_path, "r", encoding="utf-8") as f:
+                    prefs = json.load(f)
+
+            prefs["theme"] = self.theme_combo.get()
+            prefs["auto_save"] = self.auto_save_var.get()
+
+            sheet_name = self.active_sheet
+            prefs.setdefault("sheets", {})
+            prefs["sheets"][sheet_name] = {
                 "columns": {
                     rule["name"]: {
                         "required": rule["required_var"].get(),
-                        "duplicate": rule["duplicate_var"].get(),
+                        "duplicate": rule["duplicate_var"].get()
                     }
                     for rule in self.validation_rules
-                },
+                }
             }
 
             with open(prefs_path, "w", encoding="utf-8") as f:
                 json.dump(prefs, f, indent=2)
 
-            self._update_status("💾 Preferences saved for this file.", "success")
+            self._update_status(f"💾 Preferences saved for sheet '{sheet_name}'.", "success")
 
         except Exception as e:
             self._update_status(f"Failed to save preferences: {e}", "error")
+
 
 
                 
