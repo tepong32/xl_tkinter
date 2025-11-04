@@ -1,5 +1,9 @@
 # Changelog
 
+## [3.4.2] - 2025-11-04
+### 🚀 Added
+- corrected variable resulting to not saving prefs per-sheet
+
 ## [3.4.1] - 2025-11-04
 ### 🚀 Added
 - **Multi-Sheet Preferences Support**

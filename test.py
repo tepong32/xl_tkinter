@@ -1633,7 +1633,7 @@ class DynamicExcelApp:
         return self.filepath + ".prefs.json"
 
     def _load_user_prefs(self):
-        """Load per-file user preferences (sheet-aware)."""
+        """Load per-file user preferences (sheet-aware, safe fallback)."""
         prefs_path = self._get_prefs_path()
         if not prefs_path or not os.path.exists(prefs_path):
             return
@@ -1648,23 +1648,45 @@ class DynamicExcelApp:
                     self.theme_combo.set(prefs["theme"])
                     Style().theme_use(prefs["theme"])
                 except Exception:
-                    self._update_status(f"Theme '{prefs['theme']}' not available.", "warning")
+                    self._update_status(f"Theme '{prefs.get('theme')}' not available. Using default.", "warning")
 
             if "auto_save" in prefs:
-                self.auto_save_var.set(prefs["auto_save"])
+                try:
+                    self.auto_save_var.set(bool(prefs["auto_save"]))
+                except Exception:
+                    pass
 
-            # --- Apply per-sheet preferences ---
-            sheet_name = self.active_sheet
+            # --- Determine active sheet safely using the app's variable ---
+            sheet_name = getattr(self, "active_sheet_name", None)
+            if not sheet_name and self.workbook:
+                # fall back to workbook.active.title if available
+                try:
+                    sheet_name = self.workbook.active.title
+                except Exception:
+                    sheet_name = "ActiveSheet"
+
+            sheet_name = sheet_name or "ActiveSheet"
+
+            # --- Backward compatibility: convert flat 'columns' -> 'sheets' if needed ---
+            if "columns" in prefs and "sheets" not in prefs:
+                prefs.setdefault("sheets", {})
+                prefs["sheets"][sheet_name] = {"columns": prefs.get("columns", {})}
+
+            # --- Apply per-sheet preferences if present ---
             sheet_prefs = prefs.get("sheets", {}).get(sheet_name, {})
-
-            if "columns" in sheet_prefs:
+            cols = sheet_prefs.get("columns", {})
+            if cols:
                 for rule in self.validation_rules:
                     name = rule["name"]
-                    if name in sheet_prefs["columns"]:
-                        col_prefs = sheet_prefs["columns"][name]
-                        rule["required_var"].set(col_prefs.get("required", rule["required"]))
-                        rule["duplicate_var"].set(col_prefs.get("duplicate", rule["duplicate_policy"]))
-                        self._update_validation_state(rule)
+                    if name in cols:
+                        col_prefs = cols[name]
+                        try:
+                            rule["required_var"].set(bool(col_prefs.get("required", rule["required"])))
+                            rule["duplicate_var"].set(col_prefs.get("duplicate", rule["duplicate_policy"]))
+                            self._update_validation_state(rule)
+                        except Exception:
+                            # ignore per-column errors but continue
+                            continue
 
             self._update_status(f"✅ Preferences loaded for sheet '{sheet_name}'.", "success")
 
@@ -1673,33 +1695,47 @@ class DynamicExcelApp:
 
 
     def _save_user_prefs(self):
-        """Save per-file user preferences with per-sheet support."""
+        """Save per-file user preferences with safe defaults and multi-sheet support."""
         prefs_path = self._get_prefs_path()
         if not prefs_path:
             return
 
         try:
-            # Load existing prefs if any (to preserve other sheets)
+            # Load existing prefs (preserve other sheets)
             prefs = {}
             if os.path.exists(prefs_path):
-                with open(prefs_path, "r", encoding="utf-8") as f:
-                    prefs = json.load(f)
+                try:
+                    with open(prefs_path, "r", encoding="utf-8") as f:
+                        prefs = json.load(f) or {}
+                except Exception:
+                    prefs = {}
 
-            prefs["theme"] = self.theme_combo.get()
-            prefs["auto_save"] = self.auto_save_var.get()
+            # --- Determine active sheet safely (use the app's active_sheet_name) ---
+            sheet_name = getattr(self, "active_sheet_name", None)
+            if not sheet_name and self.workbook:
+                try:
+                    sheet_name = self.workbook.active.title
+                except Exception:
+                    sheet_name = None
+            sheet_name = sheet_name or "ActiveSheet"
 
-            sheet_name = self.active_sheet
+            # --- Ensure top-level keys exist and update globals ---
             prefs.setdefault("sheets", {})
+            prefs["theme"] = self.theme_combo.get()
+            prefs["auto_save"] = bool(self.auto_save_var.get())
+
+            # --- Capture this sheet's column prefs ---
             prefs["sheets"][sheet_name] = {
                 "columns": {
                     rule["name"]: {
-                        "required": rule["required_var"].get(),
+                        "required": bool(rule["required_var"].get()),
                         "duplicate": rule["duplicate_var"].get()
                     }
                     for rule in self.validation_rules
                 }
             }
 
+            # --- Write out file safely ---
             with open(prefs_path, "w", encoding="utf-8") as f:
                 json.dump(prefs, f, indent=2)
 
@@ -1707,6 +1743,7 @@ class DynamicExcelApp:
 
         except Exception as e:
             self._update_status(f"Failed to save preferences: {e}", "error")
+
 
 
 
