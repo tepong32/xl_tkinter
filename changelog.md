@@ -1,5 +1,23 @@
 # Changelog
 
+## [3.4.1] - 2025-11-04
+### 🚀 Added
+## [3.4.1] - 2025-11-03
+### 🚀 Added
+- **Multi-Sheet Preferences Support**
+  - Each sheet in a workbook now keeps its own validation and duplicate-policy settings.
+  - Preferences JSON structure now includes a  block:
+    
+  - Automatically loads the correct sheet’s preferences when switching or reopening a workbook.
+
+### 💡 Improved
+- Prevents one sheet’s preferences from overwriting another’s.
+- Backward-compatible with old  files — legacy ones are still read normally.
+
+### 🧠 Technical
+- Updated  and  to track preferences per sheet.
+- Retains global settings (, ) while isolating column rules per sheet.
+
 ## [3.4.0] - 2025-11-03
 ### 🚀 Added per-file user preferences (theme, autosave, validation policies)
 ✨ Added

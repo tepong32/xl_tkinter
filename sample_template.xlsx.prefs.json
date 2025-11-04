@@ -2,23 +2,19 @@
   "theme": "solar",
   "auto_save": false,
   "columns": {
-    "Name [warn]": {
+    "name": {
       "required": true,
       "duplicate": "none"
     },
-    "Age": {
+    "sum_age": {
       "required": true,
       "duplicate": "none"
     },
-    "Subscription": {
+    "sum_salary": {
       "required": true,
       "duplicate": "none"
     },
-    "Employment": {
-      "required": true,
-      "duplicate": "none"
-    },
-    "Date": {
+    "test": {
       "required": true,
       "duplicate": "none"
     }
