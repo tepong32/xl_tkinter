@@ -1,5 +1,5 @@
 {
-  "theme": "superhero",
+  "theme": "cosmo",
   "auto_save": false,
   "sheets": {
     "ActiveSheet": {
@@ -30,9 +30,9 @@
       "columns": {
         "Name [warn]": {
           "required": true,
-          "duplicate": "none"
+          "duplicate": "warn"
         },
-        "Age": {
+        "price": {
           "required": true,
           "duplicate": "none"
         },
@@ -41,11 +41,11 @@
           "duplicate": "none"
         },
         "Employment": {
-          "required": true,
+          "required": false,
           "duplicate": "none"
         },
         "Date": {
-          "required": true,
+          "required": false,
           "duplicate": "none"
         }
       }

@@ -241,12 +241,29 @@ class DynamicExcelApp:
         self._create_bottom_frame()
         self._create_statusbar()
 
+        # At this point self._create_bottom_frame has created self.tree.
+        # Now we can safely configure a Treeview tag used for rounded cells.
+        try:
+            # Tag style for rounded-off cells (soft orange)
+            self.tree.tag_configure("rounded_tint", background="#fff4cc")
+        except Exception:
+            # Defensive: if tree isn't present for some reason, ignore (shouldn't happen)
+            pass
+
         # Bind events & shortcuts (these rely on widgets existing)
         self._bind_events()
         self._bind_shortcuts()
 
+        # Ensure window close uses our on-close handler (restores save-on-exit prompt)
+        try:
+            self.root.protocol("WM_DELETE_WINDOW", self.on_close)
+        except Exception:
+            # If root or protocol not available, ignore — app can still function
+            pass
+
         # Prompt at start
         self._prompt_open_file_on_startup()
+
 
     # -------------------------
     # Shadow helpers
@@ -307,6 +324,8 @@ class DynamicExcelApp:
         # Delete key on tree -> delete selection
         self.tree.bind("<Delete>", lambda e: self.delete_selected_row())
         # Entry navigation will be bound per-entry by _build_input_fields / reset_to_add_mode
+        # Save prompt on close
+        self.root.protocol("WM_DELETE_WINDOW", self.on_close)
 
     def _on_row_select(self, event=None):
         try:
@@ -493,40 +512,65 @@ class DynamicExcelApp:
     # Hover handler for rounded status
     # -------------------------
     def _on_tree_hover(self, event):
+        """Handle hover events over Treeview cells and show full precision tooltip for rounded values."""
         region = self.tree.identify("region", event.x, event.y)
         if region != "cell":
             self._set_status("")
+            self._hide_tooltip()
             return
 
         row_id = self.tree.identify_row(event.y)
         col_id = self.tree.identify_column(event.x)
+
         if not row_id or not col_id:
             self._set_status("")
+            self._hide_tooltip()
             return
+
         try:
-            col_index = int(col_id.replace("#",""))
+            col_index = int(col_id.replace("#", ""))
             row_index_excel = int(self.tree.index(row_id)) + 1
         except Exception:
             self._set_status("")
+            self._hide_tooltip()
             return
 
         shadow = self._shadow_get(self.current_sheet, row_index_excel, col_index)
+
+        # ---------- FULL ROUNDED VALUE INSPECTION ----------
         if shadow and shadow.get("rounded_flag"):
             raw = shadow.get("raw")
+            parsed = shadow.get("parsed")
             displayed = self.tree.set(row_id, col_index - 1)
 
-            msg = f"Rounded-off value: original '{raw}' → displayed '{displayed}'"
-            self._set_status(msg)
-
-            # Tooltip (show full precision details)
             try:
-                self._show_tooltip(self.tree, f"Original: {raw}\nDisplayed: {displayed}")
+                raw_num = float(raw)
+            except:
+                raw_num = parsed
+
+            diff = abs(parsed - raw_num)
+            direction = "rounded up" if parsed > raw_num else "rounded down"
+
+            tooltip_text = (
+                f"Original: {raw}\n"
+                f"Displayed: {displayed}\n"
+                f"Precision lost: {diff:.6f}\n"
+                f"Direction: {direction}"
+            )
+
+            # Statusbar message
+            self._set_status(f"Rounded-off value: original '{raw}' → displayed '{displayed}'")
+
+            # Tooltip
+            try:
+                self._show_tooltip(self.tree, tooltip_text)
             except:
                 pass
+
+        # ---------- NO ROUNDING FLAG ----------
         else:
             self._set_status("")
             self._hide_tooltip()
-
 
     # -------------------------
     # Filter row helpers (kept simple)
@@ -934,33 +978,70 @@ class DynamicExcelApp:
     # Mark rounded cells (prefix marker)
     # -------------------------
     def _apply_rounded_tags(self, row_id, display_row):
+        """
+        Apply visual indicators for rounded-off values:
+        - Prefix '▲ ' to cell text
+        - Apply soft background tint via Treeview tag
+        """
         try:
-            row_index_display = int(self.tree.index(row_id)) + 1
+            row_index_excel = int(self.tree.index(row_id)) + 1
         except Exception:
             return
-        for col_idx in range(len(display_row)):
+
+        new_values = []
+        tint_columns = []  # which columns need tint
+
+        for col_idx, displayed in enumerate(display_row):
             col_excel = col_idx + 1
-            shadow = self._shadow_get(self.current_sheet, row_index_display, col_excel)
-            text = display_row[col_idx]
-            if shadow.get("rounded_flag"):
-                self.tree.image_create(row_id, column=col_excel - 1, image=self.rounded_icon, sticky="nw")
+            shadow = self._shadow_get(self.current_sheet, row_index_excel, col_excel)
 
             if shadow and shadow.get("rounded_flag"):
-                if not str(text).startswith("▲ "):
-                    new_text = f"▲ {text}"
+                tint_columns.append(col_idx)
+
+                # Add triangle prefix if not already present
+                if not str(displayed).startswith("▲ "):
+                    new_values.append(f"▲ {displayed}")
                 else:
-                    new_text = text
+                    new_values.append(displayed)
+
             else:
-                if str(text).startswith("▲ "):
-                    new_text = str(text)[2:]
+                # Remove triangle if present
+                if str(displayed).startswith("▲ "):
+                    new_values.append(displayed[2:])
                 else:
-                    new_text = text
-            try:
-                self.tree.set(row_id, col_idx, new_text)
-            except Exception:
-                vals = list(self.tree.item(row_id, "values"))
-                vals[col_idx] = new_text
-                self.tree.item(row_id, values=vals)
+                    new_values.append(displayed)
+
+        # Apply updated values to the row
+        self.tree.item(row_id, values=new_values)
+
+        # Apply or remove per-cell tint
+        for col_idx in range(len(display_row)):
+            if col_idx in tint_columns:
+                self.tag_cell(row_id, col_idx, "rounded_tint")
+            else:
+                self.tag_cell(row_id, col_idx, None)
+
+    def tag_cell(self, item, column_index, tag_name):
+        """Simulated per-cell tagging using row-level tag composition."""
+        current_tags = list(self.tree.item(item, "tags"))
+        cell_tag = f"cell_{item}_{column_index}"
+
+        # Remove old tag if present
+        if cell_tag in current_tags:
+            current_tags.remove(cell_tag)
+
+        # If no tag requested — clean and return
+        if tag_name is None:
+            self.tree.item(item, tags=current_tags)
+            return
+
+        # Create composite tag with same background as base tag
+        bg = self.tree.tag_configure(tag_name)["background"]
+        self.tree.tag_configure(cell_tag, background=bg)
+
+        current_tags.append(cell_tag)
+        self.tree.item(item, tags=current_tags)
+
 
     # -------------------------
     # Add / Edit / Delete row
@@ -1342,18 +1423,29 @@ class DynamicExcelApp:
             pass
 
     def on_close(self):
-        if self.unsaved_changes:
-            res = messagebox.askyesnocancel("Unsaved changes", "You have unsaved changes. Save before exit?")
+        """Prompt to save when closing if there are unsaved changes."""
+        if getattr(self, "unsaved_changes", False):
+            res = messagebox.askyesnocancel(
+                "Unsaved Changes",
+                "You have unsaved changes.\nDo you want to save before exiting?"
+            )
             if res is None:
-                return
+                return  # Cancel close
             if res:
+                # If save_file returns False (user canceled or save failed), abort close
                 if not self.save_file():
                     return
         try:
-            self._save_user_prefs()
+            # Try to persist preferences if you have that method
+            if hasattr(self, "_save_user_prefs"):
+                self._save_user_prefs()
+        except Exception:
+            pass
+        try:
             self.root.destroy()
         except Exception:
             os._exit(0)
+
 
     # -------------------------
     # Preferences
