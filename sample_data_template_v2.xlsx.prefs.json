@@ -1,0 +1,38 @@
+{
+  "sheets": {
+    "Sample Data Template": {
+      "columns": {
+        "Legend:": {
+          "required": true,
+          "duplicate": "none"
+        },
+        "Column 2": {
+          "required": true,
+          "duplicate": "none"
+        },
+        "Column 3": {
+          "required": true,
+          "duplicate": "none"
+        },
+        "Column 4": {
+          "required": true,
+          "duplicate": "none"
+        },
+        "Column 5": {
+          "required": true,
+          "duplicate": "none"
+        },
+        "Column 6": {
+          "required": true,
+          "duplicate": "none"
+        },
+        "Column 7": {
+          "required": true,
+          "duplicate": "none"
+        }
+      }
+    }
+  },
+  "theme": "cosmo",
+  "auto_save": false
+}

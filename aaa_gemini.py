@@ -1051,8 +1051,8 @@ class DynamicExcelApp:
             display_row.append(display_text)
             try:
                 sheet.cell(row=append_row_excel, column=col_index_excel).value = parsed
-            except Exception:
-                sheet.cell(row=append_row_excel, column=col_index_excel).value = parsed
+            except Exception as e:
+                self._update_status(f"Cell write error col {col_index_excel}: {e}", "error")
 
         row_id = self.tree.insert("", tk.END, values=display_row)
         self._apply_rounded_tags(row_id, display_row)
@@ -1266,7 +1266,13 @@ class DynamicExcelApp:
     def _show_help(self):
         help_path = resource_path("help.txt")
         if os.path.exists(help_path):
-            os.startfile(help_path) if os.name == 'nt' else None
+            import subprocess, sys
+            if os.name == 'nt':
+                os.startfile(help_path)
+            elif sys.platform == 'darwin':
+                subprocess.Popen(['open', help_path])
+            else:
+                subprocess.Popen(['xdg-open', help_path])
         else:
             messagebox.showinfo("Help", "No help.txt found.")
 

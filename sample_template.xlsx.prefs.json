@@ -1,74 +1,26 @@
 {
-  "theme": "cosmo",
+  "theme": "journal",
   "auto_save": false,
-  "sheets": {
-    "ActiveSheet": {
-      "columns": {
-        "Name [warn]": {
-          "required": true,
-          "duplicate": "none"
-        },
-        "Age": {
-          "required": true,
-          "duplicate": "none"
-        },
-        "Subscription": {
-          "required": true,
-          "duplicate": "none"
-        },
-        "Employment": {
-          "required": true,
-          "duplicate": "none"
-        },
-        "Date": {
-          "required": true,
-          "duplicate": "none"
-        }
-      }
+  "columns": {
+    "Name [warn]": {
+      "required": true,
+      "duplicate": "none"
     },
-    "Sheet1": {
-      "columns": {
-        "Name [warn]": {
-          "required": true,
-          "duplicate": "warn"
-        },
-        "price": {
-          "required": true,
-          "duplicate": "none"
-        },
-        "Subscription": {
-          "required": true,
-          "duplicate": "none"
-        },
-        "Employment": {
-          "required": false,
-          "duplicate": "none"
-        },
-        "Date": {
-          "required": false,
-          "duplicate": "none"
-        }
-      }
+    "price": {
+      "required": true,
+      "duplicate": "none"
     },
-    "with_formulas": {
-      "columns": {
-        "name": {
-          "required": true,
-          "duplicate": "none"
-        },
-        "sum_age": {
-          "required": true,
-          "duplicate": "none"
-        },
-        "sum_salary": {
-          "required": true,
-          "duplicate": "none"
-        },
-        "test": {
-          "required": true,
-          "duplicate": "none"
-        }
-      }
+    "Subscription": {
+      "required": true,
+      "duplicate": "none"
+    },
+    "Employment": {
+      "required": true,
+      "duplicate": "none"
+    },
+    "Date": {
+      "required": true,
+      "duplicate": "none"
     }
   }
 }
