@@ -24,6 +24,7 @@ A modern **Excel-style data entry companion** built with **Tkinter** and **ttkbo
   - Choose between **None / Warn / Strict**
 - “Required” toggle for each column — simple and intuitive
 - Smart duplicate detection excludes original value during edits
+- Filter-safe row editing/deleting so visible search results update the correct Excel row
 
 ### ⚙️ Excel-Like Workflow
 - Fast keyboard shortcuts:
@@ -36,6 +37,7 @@ A modern **Excel-style data entry companion** built with **Tkinter** and **ttkbo
   | Edit selected row | F2 |
   | Duplicate row | Ctrl+D |
   | Delete row | Ctrl+Shift+D |
+  | Filter rows | Type in the filter box above each column |
   | Insert blank row | Ctrl+Shift+I |
   | Cancel edit | Esc |
   | Quit | Ctrl+Q |
