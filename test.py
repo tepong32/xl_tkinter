@@ -372,7 +372,7 @@ class DynamicExcelApp:
         self.tree.configure(xscrollcommand=hsb.set)
 
         # --- Data caches ---
-        self.all_rows = []
+        self.all_rows = []  # list of (excel_row_index, row_values) tuples for filter-safe row actions
         self.filter_entries = []
         self.column_ids = []
 
@@ -473,12 +473,12 @@ class DynamicExcelApp:
             return
 
         filtered = []
-        for row in self.all_rows:
+        for excel_row_index, row in self.all_rows:
             if all(
                 (f in str(row[i]).lower() if f else True)
                 for i, f in enumerate(filters)
             ):
-                filtered.append(row)
+                filtered.append((excel_row_index, row))
 
         self._reload_tree_from_cache(filtered)
 
@@ -489,9 +489,9 @@ class DynamicExcelApp:
         self.tree.delete(*self.tree.get_children())
         display_rows = rows if rows is not None else self.all_rows
 
-        for row in display_rows:
+        for excel_row_index, row in display_rows:
             row_extended = list(row) + [""] * (len(self.headers) - len(row))
-            self.tree.insert("", tk.END, values=row_extended)
+            self.tree.insert("", tk.END, iid=self._tree_iid_for_excel_row(excel_row_index), values=row_extended)
 
     def _clear_filters(self):
         """
@@ -533,7 +533,7 @@ class DynamicExcelApp:
             return
 
         try:
-            wb = load_any_excel(path)
+            wb = load_any_excel(path, app_instance=self)
         except Exception as e:
             messagebox.showerror("Error", f"Failed to open file:\n{e}")
             return
@@ -568,7 +568,7 @@ class DynamicExcelApp:
 
         if selected_item:
             current_index = self.tree.index(selected_item)
-            excel_row_index = current_index + 3  # +2 header, +1 for below current
+            excel_row_index = self._excel_row_from_item(selected_item) + 1
             insert_index = current_index + 1
         else:
             # If nothing selected, insert at top of data area
@@ -688,15 +688,41 @@ class DynamicExcelApp:
             rowvals = [cell.value if cell.value is not None else "" for cell in r]
             if all(v == "" or v is None for v in rowvals):
                 continue
-            rows.append(rowvals)
+            rows.append((r[0].row, rowvals))
 
-        self.all_rows = rows  # cache for filtering
-        for row in rows:
+        self.all_rows = rows  # cache for filtering and stable workbook row mapping
+        for excel_row_index, row in rows:
             row_extended = list(row) + [""] * (len(self.headers) - len(row))
-            self.tree.insert("", tk.END, values=row_extended)
+            self.tree.insert("", tk.END, iid=self._tree_iid_for_excel_row(excel_row_index), values=row_extended)
 
         # --- Finally: build the filter row now that we know the headers ---
         self._create_filter_row()
+
+
+    def _tree_iid_for_excel_row(self, excel_row_index):
+        """Return a stable Treeview item id for a workbook row number."""
+        return f"row_{excel_row_index}"
+
+    def _excel_row_from_item(self, item_id):
+        """Resolve the backing workbook row for a Treeview item, even when filters are active."""
+        try:
+            return int(str(item_id).removeprefix("row_"))
+        except (TypeError, ValueError):
+            return self.tree.index(item_id) + 2
+
+    def _format_display_row(self, values):
+        """Convert normalized values to user-friendly strings for Treeview display."""
+        display_row = []
+        for val, rule in zip(values, self.validation_rules):
+            if val is None:
+                display_row.append("")
+            elif isinstance(val, date):
+                display_row.append(val.strftime("%Y-%m-%d"))
+            elif isinstance(val, float) and rule.get("format") == "decimal":
+                display_row.append(f"{val:.2f}")
+            else:
+                display_row.append(str(val))
+        return display_row
 
     def _duplicate_selected_row(self):
         """Duplicate the currently selected row (inserted right below it), auto-incrementing ID-like fields."""
@@ -746,25 +772,27 @@ class DynamicExcelApp:
 
             # Determine where to insert (below the current row)
             current_index = self.tree.index(selected_item)
-            excel_row_index = current_index + 3  # +2 header +1 for below current
+            excel_row_index = self._excel_row_from_item(selected_item) + 1
 
             # Insert new row in workbook and copy values
             sheet.insert_rows(excel_row_index, 1)
             for col_index, val in enumerate(new_values, start=1):
                 sheet.cell(row=excel_row_index, column=col_index).value = val
 
-            # Insert new row visually in Treeview (below current)
-            new_item = self.tree.insert("", current_index + 1, values=new_values)
+            # Refresh after insertion because workbook row numbers below this point shifted.
+            self._load_active_sheet()
+            new_item = self._tree_iid_for_excel_row(excel_row_index)
 
             # --- FIXED SELECTION BEHAVIOR ---
             # Clear previous selection and move highlight to the new row
             self.tree.selection_remove(self.tree.selection())
-            self.tree.selection_set(new_item)
-            self.tree.focus(new_item)   # Force the focus to match the visual highlight
-            self.tree.see(new_item)
+            if self.tree.exists(new_item):
+                self.tree.selection_set(new_item)
+                self.tree.focus(new_item)   # Force the focus to match the visual highlight
+                self.tree.see(new_item)
 
-            # Flash green to show duplication success
-            self._flash_tree_row(new_item, color="#ccffcc", duration=700)
+                # Flash green to show duplication success
+                self._flash_tree_row(new_item, color="#ccffcc", duration=700)
 
             self.unsaved_changes = True
             self._update_status(f"Duplicated row {current_index + 1} with auto-incremented IDs.")
@@ -1135,22 +1163,11 @@ class DynamicExcelApp:
             cell.value = val 
 
         # Reflect in UI: Treeview needs string representation for display
-        display_row = []
-        for val in normalized:
-            if val is None:
-                display_row.append("")
-            elif isinstance(val, date):
-                # Use strftime to format the date as YYYY-MM-DD
-                display_row.append(val.strftime("%Y-%m-%d"))
-            elif isinstance(val, (int, float)):
-                 display_row.append(str(val)) # Convert number to string
-            elif isinstance(val, float) and rule.get("format") == "decimal":
-                display_row.append(f"{val:.2f}")
-            else:
-                display_row.append(str(val))
+        display_row = self._format_display_row(normalized)
 
         # Highlight newly-added row
-        new_item_id = self.tree.insert("", tk.END, values=display_row)
+        new_item_id = self.tree.insert("", tk.END, iid=self._tree_iid_for_excel_row(append_row_idx), values=display_row)
+        self.all_rows.append((append_row_idx, display_row))
         self.tree.selection_remove(self.tree.selection())  
         self.tree.selection_set(new_item_id)
         self.tree.see(new_item_id)
@@ -1239,33 +1256,25 @@ class DynamicExcelApp:
                 return # User chose not to proceed
 
         # Update Treeview - same conversion to display strings as in add_row
-        display_row = []
-        for val in normalized:
-            if val is None:
-                display_row.append("")
-            elif isinstance(val, date):
-                # Use strftime to format the date as YYYY-MM-DD, removing any time component
-                display_row.append(val.strftime("%Y-%m-%d"))
-            elif isinstance(val, (int, float)):
-                display_row.append(str(val)) 
-            elif isinstance(val, float) and rule.get("format") == "decimal":
-                display_row.append(f"{val:.2f}")
-            else:
-                display_row.append(str(val))
+        display_row = self._format_display_row(normalized)
 
-        self.tree.item(self.editing_item, values=display_row) 
+        self.tree.item(self.editing_item, values=display_row)
+        excel_row_index = self._excel_row_from_item(self.editing_item)
+        self.all_rows = [
+            (row_idx, display_row if row_idx == excel_row_index else row_values)
+            for row_idx, row_values in self.all_rows
+        ]
 
         # Update workbook - use normalized values (ready for openpyxl)
         sheet = self.workbook[self.active_sheet_name]
-        # +2 for header row (assuming header is in row 1)
-        row_index = self.tree.index(self.editing_item) + 2 
+        row_index = excel_row_index
         
         for col_index, val in enumerate(normalized, start=1):
             cell = sheet.cell(row=row_index, column=col_index)
             cell.value = val 
 
         self.unsaved_changes = True
-        self._update_status(f"Updated row {row_index - 1} successfully." "success")
+        self._update_status(f"Updated row {row_index - 1} successfully.", "success")
 
         # Re-highlight the updated row
         self.tree.selection_set(self.editing_item)
@@ -1324,24 +1333,24 @@ class DynamicExcelApp:
         """Helper to perform deletion in workbook and Treeview after flash animation."""
         try:
             sheet = self.workbook[self.active_sheet_name]
-            excel_row_index = self.tree.index(selected_item) + 2  # +2 for header
+            excel_row_index = self._excel_row_from_item(selected_item)
 
-            # Delete from workbook and Treeview
+            # Delete from workbook and refresh because workbook row numbers below this point shifted.
             sheet.delete_rows(excel_row_index, 1)
-            next_item = self.tree.next(selected_item)
-            prev_item = self.tree.prev(selected_item)
-            self.tree.delete(selected_item)
+            self._load_active_sheet()
+            next_item = self._tree_iid_for_excel_row(excel_row_index)
+            prev_item = self._tree_iid_for_excel_row(excel_row_index - 1)
 
             self.unsaved_changes = True
             self._update_status(f"Deleted row {excel_row_index - 1} from '{self.active_sheet_name}'.", "success")
 
             # --- FIXED SELECTION BEHAVIOR ---
             # Automatically select next or previous row for clarity
-            if next_item:
+            if self.tree.exists(next_item):
                 self.tree.selection_set(next_item)
                 self.tree.focus(next_item)
                 self.tree.see(next_item)
-            elif prev_item:
+            elif self.tree.exists(prev_item):
                 self.tree.selection_set(prev_item)
                 self.tree.focus(prev_item)
                 self.tree.see(prev_item)
