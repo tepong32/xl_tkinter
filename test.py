@@ -15,6 +15,7 @@ from openpyxl import load_workbook, Workbook
 from datetime import datetime, date
 import pandas as pd
 from openpyxl.utils.dataframe import dataframe_to_rows
+from rule_engine import RuleRegistry
 
 APP_TITLE = "tEppy's Data Entry (Excel Companion with validation)"
 
@@ -192,6 +193,10 @@ class DynamicExcelApp:
         self.unsaved_changes = False
         self.original_editing_values = {} # NEW: Store original values for uniqueness check exclusion
         self.mode = "add" # Can be "add" or "edit"
+        self.header_row_idx = 1
+        self.rule_registry = RuleRegistry()
+        self.issue_results = []
+        self.fix_proposals = []
 
         # Inferred validation rules per column: list of dicts
         self.validation_rules = []
@@ -256,7 +261,16 @@ class DynamicExcelApp:
         delete_btn.pack(side=tk.LEFT, padx=(0, 10))
 
         self.add_button = ttk.Button(toolbar, text="➕ Add Row", command=self.add_row_from_inputs, style="success.TButton")
-        self.add_button.pack(side=tk.LEFT, padx=(0, 14))
+        self.add_button.pack(side=tk.LEFT, padx=(0, 8))
+
+        self.fix_issues_button = ttk.Button(
+            toolbar,
+            text="🛠 Fix Issues",
+            command=self._show_fix_issues,
+            style="warning.TButton",
+            state=tk.DISABLED
+        )
+        self.fix_issues_button.pack(side=tk.LEFT, padx=(0, 14))
 
         ttk.Label(toolbar, text="Sheet:", bootstyle="secondary").pack(side=tk.LEFT, padx=(8, 4))
         self.sheet_combo = ttk.Combobox(toolbar, state="readonly", width=28)
@@ -309,11 +323,12 @@ class DynamicExcelApp:
         # --- Apply tooltips and hover globally ---
         ToolTip(delete_btn, "Delete the selected row from sheet and view.")
         ToolTip(self.add_button, "Add a new row using data from input fields.")
+        ToolTip(self.fix_issues_button, "Review and fix detected workbook data-quality issues.")
         ToolTip(auto_save_chk, "Automatically save after Add/Edit/Delete actions.")
         ToolTip(self.theme_combo, "Switch between ttkbootstrap themes.")
         ToolTip(help_btn, "View usage instructions (from help.txt)")
 
-        for widget in [delete_btn, self.add_button, auto_save_chk, help_btn]:
+        for widget in [delete_btn, self.add_button, self.fix_issues_button, auto_save_chk, help_btn]:
             self._add_hover_effect(widget)
 
     def _create_statusbar(self):
@@ -590,6 +605,7 @@ class DynamicExcelApp:
             self._flash_tree_row(new_item, color="#ccffcc", duration=700)
 
             self.unsaved_changes = True
+            self._scan_data_quality_issues()
             self._update_status(f"Inserted blank row at Excel row {excel_row_index}.")
 
             # Auto-save if enabled
@@ -668,6 +684,7 @@ class DynamicExcelApp:
             headers = [None] * max_col
             header_row_idx = 1
 
+        self.header_row_idx = header_row_idx
         self.headers = [h if h else f"Column {i+1}" for i, h in enumerate(headers)]
 
         # Infer validation rules and build inputs
@@ -697,6 +714,168 @@ class DynamicExcelApp:
 
         # --- Finally: build the filter row now that we know the headers ---
         self._create_filter_row()
+        self._scan_data_quality_issues(start_row)
+
+
+    def _tree_iid_for_excel_row(self, excel_row_index):
+        """Return a stable Treeview item id for a workbook row number."""
+        return f"row_{excel_row_index}"
+
+    def _excel_row_from_item(self, item_id):
+        """Resolve the backing workbook row for a Treeview item, even when filters are active."""
+        try:
+            return int(str(item_id).removeprefix("row_"))
+        except (TypeError, ValueError):
+            return self.tree.index(item_id) + 2
+
+    def _format_display_row(self, values):
+        """Convert normalized values to user-friendly strings for Treeview display."""
+        display_row = []
+        for val, rule in zip(values, self.validation_rules):
+            if val is None:
+                display_row.append("")
+            elif isinstance(val, date):
+                display_row.append(val.strftime("%Y-%m-%d"))
+            elif isinstance(val, float) and rule.get("format") == "decimal":
+                display_row.append(f"{val:.2f}")
+            else:
+                display_row.append(str(val))
+        return display_row
+
+
+    def _scan_data_quality_issues(self, start_row=None):
+        """Scan the active sheet for rule-driven, fixable data-quality issues."""
+        if not self.workbook or not self.active_sheet_name or not self.headers:
+            self.issue_results = []
+            self.fix_proposals = []
+            self._refresh_fix_issues_button()
+            return
+
+        sheet = self.workbook[self.active_sheet_name]
+        data_start_row = start_row or self.header_row_idx + 1
+        self.issue_results = self.rule_registry.scan_sheet(
+            sheet=sheet,
+            sheet_name=self.active_sheet_name,
+            headers=self.headers,
+            start_row=data_start_row,
+        )
+        self.fix_proposals = self.rule_registry.build_fix_proposals(self.issue_results)
+        self._refresh_fix_issues_button()
+
+    def _refresh_fix_issues_button(self):
+        """Reflect the current fixable issue count in the toolbar."""
+        if not hasattr(self, "fix_issues_button"):
+            return
+
+        issue_count = sum(proposal.affected_count for proposal in self.fix_proposals)
+        if issue_count:
+            self.fix_issues_button.config(
+                text=f"🛠 Fix Issues ({issue_count})",
+                state=tk.NORMAL
+            )
+        else:
+            self.fix_issues_button.config(text="🛠 Fix Issues", state=tk.DISABLED)
+
+    def _show_fix_issues(self):
+        """Show detected fixable issues and let the user preview/apply one column-scoped fix."""
+        if not self.workbook or not self.active_sheet_name:
+            messagebox.showwarning("No file", "Open an .xlsx file first.")
+            return
+
+        self._scan_data_quality_issues()
+        if not self.fix_proposals:
+            messagebox.showinfo("Fix Issues", "No fixable data-quality issues were detected.")
+            return
+
+        win = tk.Toplevel(self.root)
+        win.title("Fix Issues")
+        win.geometry("760x520")
+        win.transient(self.root)
+        win.resizable(True, True)
+
+        outer = ttk.Frame(win, padding=14)
+        outer.pack(fill=tk.BOTH, expand=True)
+
+        ttk.Label(
+            outer,
+            text="Detected fixable issues. Select a column-scoped fix to preview before applying.",
+            wraplength=720
+        ).pack(anchor=tk.W, pady=(0, 8))
+
+        content = ttk.Frame(outer)
+        content.pack(fill=tk.BOTH, expand=True)
+
+        proposal_list = tk.Listbox(content, width=34, exportselection=False)
+        proposal_list.pack(side=tk.LEFT, fill=tk.Y, padx=(0, 10))
+
+        preview = tk.Text(content, wrap="word", height=18)
+        preview.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+
+        scroll = ttk.Scrollbar(content, command=preview.yview)
+        preview.configure(yscrollcommand=scroll.set)
+        scroll.pack(side=tk.RIGHT, fill=tk.Y)
+
+        for proposal in self.fix_proposals:
+            proposal_list.insert(
+                tk.END,
+                f"{proposal.label}: {proposal.column_name} ({proposal.affected_count})"
+            )
+
+        def show_preview(event=None):
+            preview.config(state=tk.NORMAL)
+            preview.delete("1.0", tk.END)
+            selection = proposal_list.curselection()
+            if not selection:
+                preview.insert("1.0", "Select a fix to preview its before/after changes.")
+            else:
+                proposal = self.fix_proposals[selection[0]]
+                lines = [
+                    f"{proposal.label} — {proposal.affected_count} change(s)",
+                    f"Sheet: {proposal.sheet_name}",
+                    f"Column: {proposal.column_name}",
+                    "",
+                    "Preview:",
+                    *proposal.preview_lines(limit=10),
+                    "",
+                    "This will update the in-memory workbook only. Use Save to write the Excel file.",
+                ]
+                preview.insert("1.0", "\n".join(lines))
+            preview.config(state=tk.DISABLED)
+
+        def apply_selected():
+            selection = proposal_list.curselection()
+            if not selection:
+                messagebox.showinfo("No fix selected", "Select an issue group to fix first.")
+                return
+
+            proposal = self.fix_proposals[selection[0]]
+            confirmed = messagebox.askyesno(
+                "Apply Fixes",
+                f"Apply {proposal.affected_count} whitespace cleanup change(s) to column "
+                f"'{proposal.column_name}'?\n\nThis changes the in-memory workbook only."
+            )
+            if not confirmed:
+                return
+
+            proposal.apply(self.workbook)
+            self.unsaved_changes = True
+            self._load_active_sheet()
+            self._update_status(
+                f"Applied {proposal.affected_count} whitespace cleanup change(s) to '{proposal.column_name}'.",
+                "success",
+                duration=0
+            )
+            win.destroy()
+
+        proposal_list.bind("<<ListboxSelect>>", show_preview)
+
+        buttons = ttk.Frame(outer)
+        buttons.pack(fill=tk.X, pady=(10, 0))
+        ttk.Button(buttons, text="Cancel", command=win.destroy, style="secondary.TButton").pack(side=tk.RIGHT)
+        ttk.Button(buttons, text="Apply Selected Fix", command=apply_selected, style="warning.TButton").pack(side=tk.RIGHT, padx=(0, 8))
+
+        proposal_list.selection_set(0)
+        show_preview()
 
 
     def _tree_iid_for_excel_row(self, excel_row_index):
@@ -795,6 +974,7 @@ class DynamicExcelApp:
                 self._flash_tree_row(new_item, color="#ccffcc", duration=700)
 
             self.unsaved_changes = True
+            self._scan_data_quality_issues()
             self._update_status(f"Duplicated row {current_index + 1} with auto-incremented IDs.")
 
             # Auto-save if enabled
@@ -955,11 +1135,11 @@ class DynamicExcelApp:
             
         sheet = self.workbook[self.active_sheet_name]
         
-        # We assume the data starts at row 2 (after the header row)
         existing_values = set()
+        data_start_row = self.header_row_idx + 1
         
-        # Iterate over all rows starting from the data rows (row 2 or higher)
-        for row_idx in range(2, sheet.max_row + 1): 
+        # Iterate over all data rows below the detected header row.
+        for row_idx in range(data_start_row, sheet.max_row + 1):
             cell_value = sheet.cell(row=row_idx, column=col_index).value
             if cell_value is not None:
                 # Normalize the value (strip whitespace, convert to string) for case-insensitive comparison
@@ -1173,6 +1353,7 @@ class DynamicExcelApp:
         self.tree.see(new_item_id)
 
         self.unsaved_changes = True
+        self._scan_data_quality_issues()
         self._update_status(f"Added new row to '{self.active_sheet_name}'.")
 
         # Auto-save if enabled
@@ -1274,7 +1455,8 @@ class DynamicExcelApp:
             cell.value = val 
 
         self.unsaved_changes = True
-        self._update_status(f"Updated row {row_index - 1} successfully.", "success")
+        self._scan_data_quality_issues()
+        self._update_status(f"Updated Excel row {row_index} successfully.", "success")
 
         # Re-highlight the updated row
         self.tree.selection_set(self.editing_item)
@@ -1342,7 +1524,8 @@ class DynamicExcelApp:
             prev_item = self._tree_iid_for_excel_row(excel_row_index - 1)
 
             self.unsaved_changes = True
-            self._update_status(f"Deleted row {excel_row_index - 1} from '{self.active_sheet_name}'.", "success")
+            self._scan_data_quality_issues()
+            self._update_status(f"Deleted Excel row {excel_row_index} from '{self.active_sheet_name}'.", "success")
 
             # --- FIXED SELECTION BEHAVIOR ---
             # Automatically select next or previous row for clarity

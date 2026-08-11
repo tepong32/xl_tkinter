@@ -1,5 +1,10 @@
 # Changelog
 
+## [Unreleased]
+### Added
+- Rule Engine v1 foundation with a whitespace cleanup rule, column-scoped fix proposals, and before/after previews.
+- Fix Issues workflow that applies confirmed cleanup changes to the in-memory workbook and preserves explicit save behavior.
+
 ## [3.3.0] - 2025-10-22
 ### 🚀 Added
 - **QoL Validation Controls**
