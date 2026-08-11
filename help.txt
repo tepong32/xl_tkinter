@@ -12,8 +12,3 @@
 - Red highlight = missing/invalid input.
 - Yellow highlight = possible duplicate (warning).
 - Green flash = successful add/update/delete.
-
-Fix Issues:
-- When the app detects hidden or repeated whitespace, click 🛠 Fix Issues.
-- Review the before/after preview, then apply selected fixes to the in-memory workbook.
-- Save explicitly when you are ready to write changes to Excel.
