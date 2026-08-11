@@ -24,6 +24,8 @@ A modern **Excel-style data entry companion** built with **Tkinter** and **ttkbo
   - Choose between **None / Warn / Strict**
 - “Required” toggle for each column — simple and intuitive
 - Smart duplicate detection excludes original value during edits
+- Filter-safe row editing/deleting so visible search results update the correct Excel row
+- Central **Fix Issues** workflow for detected whitespace cleanup, with before/after preview before applying changes
 
 ### ⚙️ Excel-Like Workflow
 - Fast keyboard shortcuts:
@@ -36,6 +38,8 @@ A modern **Excel-style data entry companion** built with **Tkinter** and **ttkbo
   | Edit selected row | F2 |
   | Duplicate row | Ctrl+D |
   | Delete row | Ctrl+Shift+D |
+  | Filter rows | Type in the filter box above each column |
+  | Fix data-quality issues | Click 🛠 Fix Issues when issues are detected |
   | Insert blank row | Ctrl+Shift+I |
   | Cancel edit | Esc |
   | Quit | Ctrl+Q |
@@ -68,9 +72,12 @@ A modern **Excel-style data entry companion** built with **Tkinter** and **ttkbo
    - Use **Tab** / **Enter** to move between fields.
    - **Enter** on last field → adds the row.
    - Double-click a row to edit it, press **Enter** to save.
-5. **Save**
+5. **Review detected issues**
+   - If the 🛠 **Fix Issues** button shows a count, open it to preview whitespace cleanup changes.
+   - Apply fixes only after reviewing the before/after preview.
+6. **Save**
    - Use **Ctrl+S** or enable **Auto-Save** in the toolbar.
-6. **Need help?**
+7. **Need help?**
    - Click the ❓ **Help** button or check `help.txt`.
 
 ---
