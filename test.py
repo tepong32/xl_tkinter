@@ -877,6 +877,32 @@ class DynamicExcelApp:
         proposal_list.selection_set(0)
         show_preview()
 
+
+    def _tree_iid_for_excel_row(self, excel_row_index):
+        """Return a stable Treeview item id for a workbook row number."""
+        return f"row_{excel_row_index}"
+
+    def _excel_row_from_item(self, item_id):
+        """Resolve the backing workbook row for a Treeview item, even when filters are active."""
+        try:
+            return int(str(item_id).removeprefix("row_"))
+        except (TypeError, ValueError):
+            return self.tree.index(item_id) + 2
+
+    def _format_display_row(self, values):
+        """Convert normalized values to user-friendly strings for Treeview display."""
+        display_row = []
+        for val, rule in zip(values, self.validation_rules):
+            if val is None:
+                display_row.append("")
+            elif isinstance(val, date):
+                display_row.append(val.strftime("%Y-%m-%d"))
+            elif isinstance(val, float) and rule.get("format") == "decimal":
+                display_row.append(f"{val:.2f}")
+            else:
+                display_row.append(str(val))
+        return display_row
+
     def _duplicate_selected_row(self):
         """Duplicate the currently selected row (inserted right below it), auto-incrementing ID-like fields."""
         if not self.workbook or not self.active_sheet_name:
